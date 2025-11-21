@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fire TV Remote Fix</title>
+    <title>Volume Fixed Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: black; overflow: hidden; }
-        /* Fontos: touch-action none segít, hogy ne lehessen görgetni/húzni */
-        #safe-zone { width: 100vw; height: 100vh; display: block; outline: none; touch-action: none; }
+        /* Eltüntetjük a kurzort az egész oldalról és letiltjuk a görgetést */
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: black; overflow: hidden; 
+            cursor: none !important; /* Fontos: Nincs egérkurzor! */
+            touch-action: none; /* Nincs tapicskolás */
+        }
+        #safe-zone { width: 100vw; height: 100vh; display: block; outline: none; }
     </style>
 </head>
 <body>
@@ -20,45 +25,45 @@
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // 1. REJTEKHELY (Shadow DOM)
         const host = document.getElementById('safe-zone');
-        host.focus(); // Azonnali fókusz
         
-        // Időnként visszarakjuk a fókuszt, ha elveszne
-        setInterval(() => { if(document.activeElement !== host) host.focus(); }, 2000);
+        // FÓKUSZ KÉNYSZERÍTÉS (Hogy a gombok biztosan működjenek)
+        host.focus();
+        document.body.onclick = () => host.focus();
+        setInterval(() => { host.focus(); }, 3000); // 3 másodpercenként visszaveszi az irányítást
 
         const shadow = host.attachShadow({ mode: 'closed' });
 
-        // 2. STÍLUSOK
+        // STÍLUSOK
         const style = document.createElement('style');
         style.textContent = `
             @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
-            :host { display: block; width: 100%; height: 100%; position: relative; font-family: sans-serif; cursor: none; } /* Egér elrejtése */
+            :host { display: block; width: 100%; height: 100%; position: relative; font-family: sans-serif; cursor: none; }
             
             video { width: 100%; height: 100%; object-fit: contain; background: black; }
             video::-webkit-media-controls { display: none !important; }
 
-            /* Visszajelző ikonok középen */
+            /* Visszajelzés középen */
             .center-feedback {
                 position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
                 font-size: 80px; color: rgba(255,255,255,0.9);
-                background: rgba(0,0,0,0.6); padding: 20px 40px; border-radius: 20px;
-                pointer-events: none; z-index: 20; display: none; flex-direction: column; align-items: center;
+                background: rgba(0,0,0,0.7); padding: 30px; border-radius: 20px;
+                pointer-events: none; z-index: 50; display: none; flex-direction: column; align-items: center;
+                min-width: 200px;
             }
-            .center-text { font-size: 30px; margin-top: 10px; color: #fff; }
+            .center-text { font-size: 30px; margin-top: 15px; color: #fff; font-weight: bold; }
 
             /* Vezérlősáv */
             .controls {
                 position: absolute; bottom: 0; left: 0; width: 100%; height: 80px;
-                background: linear-gradient(to top, rgba(0,0,0,0.95), transparent);
-                display: flex; align-items: center; padding: 0 30px; z-index: 30; transition: opacity 0.3s;
+                background: linear-gradient(to top, rgba(0,0,0,1), transparent);
+                display: flex; align-items: center; padding: 0 30px; z-index: 40; transition: opacity 0.3s;
             }
             
-            button { background: none; border: none; color: white; font-size: 24px; width: 45px; cursor: pointer; }
+            button { background: none; border: none; color: white; font-size: 24px; width: 45px; }
             .time { color: white; font-size: 18px; margin: 0 15px; min-width: 110px; text-align: center; }
             
-            .slider-container { position: relative; display: flex; align-items: center; }
-            .seek-box { flex-grow: 1; margin: 0 15px; }
+            .seek-box { flex-grow: 1; margin: 0 15px; display: flex; align-items: center; }
             .vol-box { width: 100px; margin-left: 5px; display: flex; align-items: center; }
             
             input[type=range] { -webkit-appearance: none; width: 100%; height: 6px; background: #555; border-radius: 5px; outline: none; }
@@ -68,7 +73,7 @@
         `;
         shadow.appendChild(style);
 
-        // HTML FELÉPÍTÉS
+        // HTML
         const container = document.createElement('div');
         container.style.width = '100%'; container.style.height = '100%'; container.style.position = 'relative';
 
@@ -87,14 +92,14 @@
                     <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="1">
                 </div>
                 <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
-                <div class="slider-container seek-box">
+                <div class="seek-box">
                     <input type="range" id="seek" min="0" value="0" step="1">
                 </div>
             </div>
         `;
         shadow.appendChild(container);
 
-        // JAVASCRIPT
+        // LOGIKA
         const vid = container.querySelector('#v');
         const feedback = container.querySelector('#feedback');
         const fbIcon = container.querySelector('#fb-icon');
@@ -106,7 +111,6 @@
         const durText = container.querySelector('#dur');
         const controlsDiv = container.querySelector('#controls');
 
-        // BETÖLTÉS
         if (videoUrl) {
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
                 const hls = new Hls();
@@ -153,71 +157,58 @@
             resetTimer();
         }
 
-        // --- TÁVIRÁNYÍTÓ DETEKTÁLÁS (JAVÍTOTT) ---
+        // --- TÁVIRÁNYÍTÓ DETEKTÁLÁS (Javítva) ---
+        // Ez most már megelőzi, hogy az egér elmásszon!
         
-        // Ez a kód kifejezetten figyeli a Hangerő gombokat ÉS próbálja letiltani az egeret
         host.addEventListener('keydown', (e) => {
             const key = e.key;
             const code = e.keyCode;
-            
-            // console.log("Gomb:", key, code); // Ha tesztelni kell
 
-            // 1. TÉNYLEGES HANGERŐ GOMBOK (+ és -)
-            // A böngészők néha "VolumeUp" / "VolumeDown" néven küldik
-            // Néha pedig AudioVolumeUp (175) / AudioVolumeDown (174)
-            if (key === 'VolumeUp' || key === 'AudioVolumeUp' || code === 175) {
-                changeVolume(0.1);
-                e.preventDefault(); // Ne csináljon mást
+            // console.log("Code:", code, "Key:", key);
+
+            // 1. OK / PLAY (Kör közepe vagy Play gomb)
+            if (code === 13 || code === 179 || key === 'Enter' || key === 'MediaPlayPause') {
+                togglePlay();
+                e.preventDefault(); // Megakadályozza a kattintást
                 return;
             }
-            if (key === 'VolumeDown' || key === 'AudioVolumeDown' || code === 174) {
+
+            // 2. JOBBRA (Tekerés)
+            if (code === 39 || code === 228 || key === 'ArrowRight') {
+                seekVideo(10);
+                e.preventDefault(); // Megakadályozza az egér mozgást
+                return;
+            }
+
+            // 3. BALRA (Tekerés)
+            if (code === 37 || code === 227 || key === 'ArrowLeft') {
+                seekVideo(-10);
+                e.preventDefault(); // Megakadályozza az egér mozgást
+                return;
+            }
+
+            // 4. FEL (HANGERŐ +)
+            // Itt a 'preventDefault' a legfontosabb, ez állítja meg a kurzort!
+            if (code === 38 || key === 'ArrowUp') {
+                changeVolume(0.1);
+                e.preventDefault(); 
+                return;
+            }
+
+            // 5. LE (HANGERŐ -)
+            if (code === 40 || key === 'ArrowDown') {
                 changeVolume(-0.1);
                 e.preventDefault();
                 return;
             }
-
-            // 2. NYILAK (KÖR) - EGÉR TILTÁSSAL
-            // Ha a Kör gombokat használod, a preventDefault() elvileg megfogja az egeret
-            
-            // PLAY / PAUSE (Középső gomb)
-            if (key === 'Enter' || key === 'Select' || key === 'MediaPlayPause' || code === 13 || code === 179) {
-                togglePlay();
-                e.preventDefault(); return;
-            }
-
-            // JOBBRA (Tekerés)
-            if (key === 'ArrowRight' || key === 'Right' || key === 'MediaFastForward' || code === 39 || code === 228) {
-                seekVideo(10);
-                e.preventDefault(); return;
-            }
-
-            // BALRA (Tekerés)
-            if (key === 'ArrowLeft' || key === 'Left' || key === 'MediaRewind' || code === 37 || code === 227) {
-                seekVideo(-10);
-                e.preventDefault(); return;
-            }
-
-            // FEL (Hangerő +)
-            if (key === 'ArrowUp' || key === 'Up' || code === 38) {
-                changeVolume(0.1);
-                e.preventDefault(); // EZ FONTOS: Ez tiltja le, hogy az egér felfelé menjen!
-                return;
-            }
-
-            // LE (Hangerő -)
-            if (key === 'ArrowDown' || key === 'Down' || code === 40) {
-                changeVolume(-0.1);
-                e.preventDefault(); // Ez tiltja le az egér mozgást lefelé
-                return;
-            }
         });
 
-        // ESEMÉNYEK
+        // Egyéb események
         btnPlay.onclick = togglePlay;
         vid.onclick = togglePlay;
         seek.oninput = () => vid.currentTime = seek.value;
         volSlider.oninput = () => { vid.volume = volSlider.value; };
-
+        
         function formatTime(s) { const m=Math.floor(s/60); const sec=Math.floor(s%60); return `${m}:${sec<10?'0':''}${sec}`; }
         vid.addEventListener('timeupdate', () => {
             if (!isNaN(vid.duration)) { seek.max = vid.duration; durText.innerText = formatTime(vid.duration); }
@@ -230,7 +221,7 @@
             clearTimeout(timer);
             timer = setTimeout(() => { if (!vid.paused) controlsDiv.classList.add('hidden'); }, 4000);
         }
-        container.addEventListener('mousemove', resetTimer);
+        // Egér mozgás csak akkor hozza elő a sávot, ha nem tiltottuk le a kurzort (de most le van tiltva CSS-ben)
         container.addEventListener('click', resetTimer);
 
     </script>
