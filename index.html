@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shadow Player</title>
+    <title>Ultimate TV Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
             background: black; overflow: hidden;
         }
-        
-        /* Ez a konténer, amibe elrejtjük a cuccot */
-        #shadow-host {
+        /* A konténer, ami elrejti a tartalmat a TV elől */
+        #safe-zone {
             width: 100vw; height: 100vh;
             display: block;
         }
@@ -20,96 +20,190 @@
 </head>
 <body>
 
-    <div id="shadow-host"></div>
+    <div id="safe-zone"></div>
 
     <script>
-        // URL paraméter
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // 1. LÉTREHOZZUK A ZÁRT ÁRNYÉK DOM-OT (Shadow DOM)
-        // A "mode: 'closed'" a kulcs! Ez elvileg kizárja a külső szkripteket.
-        const host = document.getElementById('shadow-host');
+        // 1. LÉTREHOZZUK A VÉDETT BUNKERT (Shadow DOM)
+        const host = document.getElementById('safe-zone');
         const shadow = host.attachShadow({ mode: 'closed' });
 
-        // 2. Stílusok a bunker belsejében
+        // 2. STÍLUSOK (A saját lejátszó kinézete)
+        // Ezt a TV nem látja kívülről!
         const style = document.createElement('style');
         style.textContent = `
-            :host { display: block; width: 100%; height: 100%; position: relative; }
+            @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
             
-            /* A videó kitölti a teret */
+            :host { display: block; width: 100%; height: 100%; position: relative; font-family: Arial, sans-serif; }
+            
+            /* Videó */
             video {
                 width: 100%; height: 100%;
                 object-fit: contain;
                 background: black;
             }
-            
-            /* Natív vezérlők tiltása */
-            video::-webkit-media-controls { display: none !important; }
-            
-            /* Saját gomb réteg */
-            .overlay {
-                position: absolute; top: 0; left: 0;
-                width: 100%; height: 100%;
-                display: flex; justify-content: center; align-items: center;
-                z-index: 10; cursor: pointer;
+            video::-webkit-media-controls { display: none !important; } /* Natív tiltás */
+
+            /* Nagy Play gomb középen */
+            .big-play {
+                position: absolute; top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                font-size: 80px; color: rgba(255,255,255,0.8);
+                cursor: pointer; z-index: 20;
+                text-shadow: 0 0 20px black;
             }
-            .btn {
-                padding: 20px 40px; background: red; color: white;
-                font-size: 24px; border-radius: 10px; border: 2px solid white;
-                font-family: sans-serif; font-weight: bold;
-                display: none; /* Alapból rejtve */
+
+            /* Vezérlősáv alul */
+            .controls {
+                position: absolute; bottom: 0; left: 0;
+                width: 100%; height: 70px;
+                background: rgba(0,0,0,0.85);
+                display: flex; align-items: center;
+                padding: 0 20px; box-sizing: border-box;
+                z-index: 30;
+                transition: opacity 0.5s;
             }
+            
+            /* Gombok */
+            button {
+                background: none; border: none; color: white;
+                font-size: 24px; cursor: pointer; margin: 0 10px;
+                width: 40px; text-align: center;
+            }
+            
+            /* Idő */
+            .time { color: white; font-size: 16px; margin: 0 15px; min-width: 100px; text-align: center; }
+
+            /* Csúszka (Seek bar) */
+            .seek-container { flex-grow: 1; margin: 0 15px; position: relative; display: flex; align-items: center; }
+            
+            input[type=range] {
+                -webkit-appearance: none; width: 100%; height: 6px;
+                background: #555; border-radius: 5px; outline: none;
+            }
+            input[type=range]::-webkit-slider-thumb {
+                -webkit-appearance: none; width: 18px; height: 18px;
+                background: red; border-radius: 50%; cursor: pointer; border: 2px solid white;
+            }
+
+            /* Eltűnés ha nem mozogsz */
+            .hidden { opacity: 0; }
         `;
         shadow.appendChild(style);
 
-        // 3. A Videó elem létrehozása
-        const video = document.createElement('video');
-        video.setAttribute('playsinline', '');
-        video.setAttribute('webkit-playsinline', '');
-        shadow.appendChild(video);
+        // 3. A HTML FELÉPÍTÉSE (Videó + Vezérlők)
+        const container = document.createElement('div');
+        container.style.width = '100%';
+        container.style.height = '100%';
+        container.style.position = 'relative';
 
-        // 4. Saját gomb (hogy tudj indítani)
-        const overlay = document.createElement('div');
-        overlay.className = 'overlay';
-        
-        const btn = document.createElement('button');
-        btn.className = 'btn';
-        btn.innerText = 'LEJÁTSZÁS';
-        btn.style.display = 'block'; // Kezdéskor látszik
-        
-        overlay.appendChild(btn);
-        shadow.appendChild(overlay);
+        container.innerHTML = `
+            <div id="big-play" class="big-play"><i class="fas fa-play"></i></div>
+            
+            <video id="v" playsinline webkit-playsinline></video>
 
-        // 5. Logika
+            <div id="controls" class="controls">
+                <button id="btn-play"><i class="fas fa-play"></i></button>
+                <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
+                <div class="seek-container">
+                    <input type="range" id="seek" min="0" value="0" step="0.1">
+                </div>
+                <button id="btn-full"><i class="fas fa-expand"></i></button>
+            </div>
+        `;
+        shadow.appendChild(container);
+
+        // 4. JAVASCRIPT LOGIKA (Működés)
+        const vid = container.querySelector('#v');
+        const bigPlay = container.querySelector('#big-play');
+        const btnPlay = container.querySelector('#btn-play');
+        const btnFull = container.querySelector('#btn-full');
+        const seek = container.querySelector('#seek');
+        const curText = container.querySelector('#cur');
+        const durText = container.querySelector('#dur');
+        const controlsDiv = container.querySelector('#controls');
+
+        // Betöltés
         if (videoUrl) {
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
                 const hls = new Hls();
                 hls.loadSource(videoUrl);
-                hls.attachMedia(video);
+                hls.attachMedia(vid);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // Kész a lejátszásra
+                });
             } else {
-                video.src = videoUrl;
+                vid.src = videoUrl;
             }
         } else {
-            btn.innerText = "Nincs URL!";
+            bigPlay.innerHTML = "Nincs URL!";
         }
 
-        // Kattintás kezelés a bunkerben
-        overlay.addEventListener('click', (e) => {
-            e.stopPropagation(); // Ne engedjük ki a kattintást a bunkerből!
-            
-            if (video.paused) {
-                video.play().then(() => {
-                    btn.style.display = 'none';
-                }).catch(err => alert(err));
+        // Play/Pause funkció
+        function togglePlay() {
+            if (vid.paused) {
+                vid.play();
+                bigPlay.style.display = 'none';
+                btnPlay.innerHTML = '<i class="fas fa-pause"></i>';
             } else {
-                video.pause();
-                btn.style.display = 'block';
+                vid.pause();
+                bigPlay.style.display = 'block';
+                bigPlay.innerHTML = '<i class="fas fa-play"></i>';
+                btnPlay.innerHTML = '<i class="fas fa-play"></i>';
             }
+        }
+
+        // Gombok kötése
+        bigPlay.addEventListener('click', togglePlay);
+        btnPlay.addEventListener('click', togglePlay);
+        
+        // Kattintás a videóra (opcionális: pause/play)
+        vid.addEventListener('click', togglePlay);
+
+        // Idő frissítése és csúszka mozgatása
+        function formatTime(s) {
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            return `${m}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        vid.addEventListener('timeupdate', () => {
+            const time = vid.currentTime;
+            const duration = vid.duration;
+            
+            if (!isNaN(duration)) {
+                seek.max = duration;
+                durText.innerText = formatTime(duration);
+            }
+            seek.value = time;
+            curText.innerText = formatTime(time);
         });
 
-        // Megpróbáljuk letiltani a jobb klikket/menüt is
-        host.addEventListener('contextmenu', e => e.preventDefault());
+        // Tekerés
+        seek.addEventListener('input', () => {
+            vid.currentTime = seek.value;
+        });
+
+        // Teljes képernyő (Kicsit trükkös Shadow DOM-ban)
+        btnFull.addEventListener('click', () => {
+            if (host.requestFullscreen) host.requestFullscreen();
+            else if (host.webkitRequestFullscreen) host.webkitRequestFullscreen();
+        });
+
+        // Vezérlő eltüntetése inaktivitás esetén
+        let timer;
+        function resetTimer() {
+            controlsDiv.classList.remove('hidden');
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                if (!vid.paused) controlsDiv.classList.add('hidden');
+            }, 4000);
+        }
+        container.addEventListener('mousemove', resetTimer);
+        container.addEventListener('click', resetTimer);
+
     </script>
 </body>
 </html>
