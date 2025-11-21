@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Javító & Indító</title>
+    <style>
+        body { 
+            background: #111; color: white; font-family: sans-serif; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; margin: 0;
+        }
+        h2 { margin-bottom: 20px; text-align: center; }
+        textarea { 
+            width: 80%; height: 150px; 
+            background: #222; color: #0f0; border: 2px solid #555; 
+            padding: 15px; border-radius: 10px; font-size: 14px;
+            font-family: monospace;
+        }
+        button {
+            margin-top: 30px; padding: 20px 50px; font-size: 24px; font-weight: bold;
+            background: #e50914; color: white; border: none; border-radius: 50px; 
+            cursor: pointer; box-shadow: 0 0 20px rgba(229, 9, 20, 0.5);
+        }
+        button:active { transform: scale(0.95); }
+        .note { color: #aaa; margin-top: 20px; font-size: 14px; max-width: 80%; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <h2>Illeszd be a hibás videó linket:</h2>
+    
+    <textarea id="inputLink" placeholder="https://..."></textarea>
+    
+    <button onclick="fixAndPlay()">JAVÍTÁS ÉS LEJÁTSZÁS</button>
+
+    <div class="note">
+        Ez a script automatikusan levágja a hibás "bytes" részt és kódolja a linket a TV számára.
+    </div>
+
+    <script>
+        function fixAndPlay() {
+            let link = document.getElementById('inputLink').value.trim();
+            
+            if(!link) {
+                alert("Nincs link! Másolj be valamit.");
+                return;
+            }
+
+            // 1. LÉPÉS: Levágjuk a "bytes=..." részt a végéről, ha van
+            // Ez okozza azt, hogy csak 1 másodpercet játszik le
+            if (link.includes('&bytes=')) {
+                link = link.split('&bytes=')[0];
+            }
+
+            // 2. LÉPÉS: Kódoljuk a linket (hogy az & jelek megmaradjanak)
+            const encodedLink = encodeURIComponent(link);
+
+            // 3. LÉPÉS: Indítás
+            window.location.href = 'index.html?url=' + encodedLink;
+        }
+    </script>
+</body>
+</html>
