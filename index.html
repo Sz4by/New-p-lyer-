@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate TV Player</title>
+    <title>Remote Control Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -11,7 +11,7 @@
             margin: 0; padding: 0; width: 100%; height: 100%;
             background: black; overflow: hidden;
         }
-        /* A konténer, ami elrejti a tartalmat a TV elől */
+        /* A konténer */
         #safe-zone {
             width: 100vw; height: 100vh;
             display: block;
@@ -26,81 +26,71 @@
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // 1. LÉTREHOZZUK A VÉDETT BUNKERT (Shadow DOM)
+        // 1. SHADOW DOM LÉTREHOZÁSA (A rejtekhely)
         const host = document.getElementById('safe-zone');
         const shadow = host.attachShadow({ mode: 'closed' });
 
-        // 2. STÍLUSOK (A saját lejátszó kinézete)
-        // Ezt a TV nem látja kívülről!
+        // 2. STÍLUSOK
         const style = document.createElement('style');
         style.textContent = `
             @import url('https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css');
             
-            :host { display: block; width: 100%; height: 100%; position: relative; font-family: Arial, sans-serif; }
+            :host { display: block; width: 100%; height: 100%; position: relative; font-family: sans-serif; }
             
-            /* Videó */
             video {
                 width: 100%; height: 100%;
-                object-fit: contain;
-                background: black;
+                object-fit: contain; background: black;
             }
-            video::-webkit-media-controls { display: none !important; } /* Natív tiltás */
+            video::-webkit-media-controls { display: none !important; }
 
-            /* Nagy Play gomb középen */
-            .big-play {
+            /* Nagy Play ikon (Indításkor/Szünetnél) */
+            .big-icon {
                 position: absolute; top: 50%; left: 50%;
                 transform: translate(-50%, -50%);
-                font-size: 80px; color: rgba(255,255,255,0.8);
-                cursor: pointer; z-index: 20;
+                font-size: 100px; color: rgba(255,255,255,0.8);
                 text-shadow: 0 0 20px black;
+                pointer-events: none; z-index: 20;
+                display: none; /* Alapból rejtve */
             }
 
-            /* Vezérlősáv alul */
+            /* Vezérlősáv */
             .controls {
                 position: absolute; bottom: 0; left: 0;
-                width: 100%; height: 70px;
-                background: rgba(0,0,0,0.85);
+                width: 100%; height: 80px;
+                background: rgba(0,0,0,0.9);
                 display: flex; align-items: center;
-                padding: 0 20px; box-sizing: border-box;
-                z-index: 30;
-                transition: opacity 0.5s;
+                padding: 0 30px; box-sizing: border-box;
+                z-index: 30; transition: opacity 0.3s;
             }
             
-            /* Gombok */
             button {
                 background: none; border: none; color: white;
-                font-size: 24px; cursor: pointer; margin: 0 10px;
-                width: 40px; text-align: center;
+                font-size: 24px; width: 50px; text-align: center;
             }
             
-            /* Idő */
-            .time { color: white; font-size: 16px; margin: 0 15px; min-width: 100px; text-align: center; }
+            .time { color: white; font-size: 18px; margin: 0 20px; min-width: 110px; text-align: center; }
 
-            /* Csúszka (Seek bar) */
-            .seek-container { flex-grow: 1; margin: 0 15px; position: relative; display: flex; align-items: center; }
-            
+            /* Csúszka */
+            .seek-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; }
             input[type=range] {
-                -webkit-appearance: none; width: 100%; height: 6px;
+                -webkit-appearance: none; width: 100%; height: 8px;
                 background: #555; border-radius: 5px; outline: none;
             }
             input[type=range]::-webkit-slider-thumb {
-                -webkit-appearance: none; width: 18px; height: 18px;
-                background: red; border-radius: 50%; cursor: pointer; border: 2px solid white;
+                -webkit-appearance: none; width: 20px; height: 20px;
+                background: red; border-radius: 50%; border: 2px solid white;
             }
 
-            /* Eltűnés ha nem mozogsz */
             .hidden { opacity: 0; }
         `;
         shadow.appendChild(style);
 
-        // 3. A HTML FELÉPÍTÉSE (Videó + Vezérlők)
+        // 3. HTML FELÉPÍTÉS
         const container = document.createElement('div');
-        container.style.width = '100%';
-        container.style.height = '100%';
-        container.style.position = 'relative';
+        container.style.width = '100%'; container.style.height = '100%'; container.style.position = 'relative';
 
         container.innerHTML = `
-            <div id="big-play" class="big-play"><i class="fas fa-play"></i></div>
+            <div id="center-icon" class="big-icon"><i class="fas fa-play"></i></div>
             
             <video id="v" playsinline webkit-playsinline></video>
 
@@ -108,18 +98,16 @@
                 <button id="btn-play"><i class="fas fa-play"></i></button>
                 <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
                 <div class="seek-container">
-                    <input type="range" id="seek" min="0" value="0" step="0.1">
+                    <input type="range" id="seek" min="0" value="0" step="1">
                 </div>
-                <button id="btn-full"><i class="fas fa-expand"></i></button>
             </div>
         `;
         shadow.appendChild(container);
 
-        // 4. JAVASCRIPT LOGIKA (Működés)
+        // 4. LOGIKA
         const vid = container.querySelector('#v');
-        const bigPlay = container.querySelector('#big-play');
+        const centerIcon = container.querySelector('#center-icon');
         const btnPlay = container.querySelector('#btn-play');
-        const btnFull = container.querySelector('#btn-full');
         const seek = container.querySelector('#seek');
         const curText = container.querySelector('#cur');
         const durText = container.querySelector('#dur');
@@ -131,38 +119,85 @@
                 const hls = new Hls();
                 hls.loadSource(videoUrl);
                 hls.attachMedia(vid);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    // Kész a lejátszásra
-                });
             } else {
                 vid.src = videoUrl;
             }
         } else {
-            bigPlay.innerHTML = "Nincs URL!";
+            centerIcon.innerHTML = "Nincs URL";
+            centerIcon.style.display = 'block';
         }
 
-        // Play/Pause funkció
+        // --- VEZÉRLÉS FUNKCIÓK ---
+
         function togglePlay() {
             if (vid.paused) {
                 vid.play();
-                bigPlay.style.display = 'none';
+                centerIcon.style.display = 'none';
                 btnPlay.innerHTML = '<i class="fas fa-pause"></i>';
+                resetTimer(); // Sáv megjelenítése
             } else {
                 vid.pause();
-                bigPlay.style.display = 'block';
-                bigPlay.innerHTML = '<i class="fas fa-play"></i>';
+                centerIcon.innerHTML = '<i class="fas fa-play"></i>'; // Play ikon
+                centerIcon.style.display = 'block';
                 btnPlay.innerHTML = '<i class="fas fa-play"></i>';
+                controlsDiv.classList.remove('hidden'); // Sáv maradjon kint
             }
         }
 
-        // Gombok kötése
-        bigPlay.addEventListener('click', togglePlay);
-        btnPlay.addEventListener('click', togglePlay);
-        
-        // Kattintás a videóra (opcionális: pause/play)
-        vid.addEventListener('click', togglePlay);
+        function seekVideo(seconds) {
+            vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + seconds));
+            
+            // Vizuális visszajelzés (ikon középen)
+            centerIcon.style.display = 'block';
+            if (seconds > 0) centerIcon.innerHTML = '<i class="fas fa-forward"></i> +10s';
+            else centerIcon.innerHTML = '<i class="fas fa-backward"></i> -10s';
+            
+            // Kis idő múlva eltüntetjük az ikont
+            setTimeout(() => {
+                if (!vid.paused) centerIcon.style.display = 'none';
+            }, 800);
+            
+            resetTimer();
+        }
 
-        // Idő frissítése és csúszka mozgatása
+        // --- TÁVIRÁNYÍTÓ GOMBOK KEZELÉSE ---
+        // Ez a rész figyeli a Fire TV távirányítót
+        document.addEventListener('keydown', (e) => {
+            const key = e.key;
+            const code = e.keyCode;
+
+            // Debugoláshoz (ha kellene): console.log("Gomb:", key, code);
+
+            // 1. KÖZÉPSŐ GOMB (OK / ENTER) vagy PLAY/PAUSE GOMB
+            if (key === 'Enter' || code === 13 || code === 179 || key === 'MediaPlayPause') {
+                togglePlay();
+                e.preventDefault(); // Ne kattintson sehova máshova
+            }
+
+            // 2. JOBBRA NYÍL vagy FAST FORWARD (Tekerés előre 10mp)
+            if (key === 'ArrowRight' || code === 39 || code === 228 || key === 'MediaFastForward') {
+                seekVideo(10);
+                e.preventDefault();
+            }
+
+            // 3. BALRA NYÍL vagy REWIND (Tekerés hátra 10mp)
+            if (key === 'ArrowLeft' || code === 37 || code === 227 || key === 'MediaRewind') {
+                seekVideo(-10);
+                e.preventDefault();
+            }
+            
+            // 4. SPACE (Billentyűzethez)
+            if (code === 32) {
+                togglePlay();
+                e.preventDefault();
+            }
+        });
+
+        // Egér/Touch események
+        btnPlay.addEventListener('click', togglePlay);
+        centerIcon.addEventListener('click', togglePlay);
+        
+        // Idő frissítése
         function formatTime(s) {
             const m = Math.floor(s / 60);
             const sec = Math.floor(s % 60);
@@ -170,29 +205,20 @@
         }
 
         vid.addEventListener('timeupdate', () => {
-            const time = vid.currentTime;
-            const duration = vid.duration;
-            
-            if (!isNaN(duration)) {
-                seek.max = duration;
-                durText.innerText = formatTime(duration);
+            if (!isNaN(vid.duration)) {
+                seek.max = vid.duration;
+                durText.innerText = formatTime(vid.duration);
             }
-            seek.value = time;
-            curText.innerText = formatTime(time);
+            seek.value = vid.currentTime;
+            curText.innerText = formatTime(vid.currentTime);
         });
 
-        // Tekerés
         seek.addEventListener('input', () => {
             vid.currentTime = seek.value;
+            resetTimer();
         });
 
-        // Teljes képernyő (Kicsit trükkös Shadow DOM-ban)
-        btnFull.addEventListener('click', () => {
-            if (host.requestFullscreen) host.requestFullscreen();
-            else if (host.webkitRequestFullscreen) host.webkitRequestFullscreen();
-        });
-
-        // Vezérlő eltüntetése inaktivitás esetén
+        // Inaktivitás kezelése (Sáv elrejtése)
         let timer;
         function resetTimer() {
             controlsDiv.classList.remove('hidden');
