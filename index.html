@@ -2,135 +2,108 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="layoutmode" content="standard">
-    <title>Full TV Player</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quarantine Player</title>
     <style>
-        /* Minden margó törlése, hogy ne legyen fehér csík a szélén */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000000;
-            overflow: hidden; /* Görgetősáv letiltása */
-        }
-
-        /* A videó beállítása: Fixen az ablakhoz ragasztva */
-        #main-video {
-            position: fixed; /* Ez tartja a helyén, hogy ne csússzon el */
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: contain; /* Ez biztosítja, hogy a videó ne nyúljon meg, de kitöltse a helyet */
-            z-index: 1;
-            background: #000;
-            outline: none;
-            border: none;
-        }
-
-        /* Indító gomb réteg (hogy biztosan elinduljon) */
-        #start-layer {
-            position: absolute;
-            top: 0; left: 0;
+            margin: 0; padding: 0;
             width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999; /* Legyen minden felett */
-            cursor: pointer;
+            background: black;
+            overflow: hidden;
         }
-
-        #play-btn {
-            font-size: 2rem;
-            color: white;
-            padding: 15px 40px;
-            border: 3px solid white;
-            border-radius: 10px;
-            background: transparent;
-            text-transform: uppercase;
-            font-family: sans-serif;
-            font-weight: bold;
+        /* A Karantén Doboz (Iframe) */
+        #video-frame {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+            display: block;
         }
     </style>
 </head>
 <body>
 
-    <div id="start-layer" onclick="startPlayback()">
-        <div id="play-btn">VIDEÓ INDÍTÁSA</div>
-    </div>
-
-    <video id="main-video" 
-           playsinline 
-           webkit-playsinline 
-           x5-video-player-type="h5-page" 
-           x5-video-player-fullscreen="true"
-           preload="auto">
-    </video>
+    <iframe id="video-frame" allowfullscreen allow="autoplay; encrypted-media"></iframe>
 
     <script>
-        var video = document.getElementById('main-video');
-        var startLayer = document.getElementById('start-layer');
-        var playBtn = document.getElementById('play-btn');
-
-        // URL paraméter beolvasása
+        // 1. URL paraméter megszerzése a főoldalról
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
         if (videoUrl) {
-            // HLS (.m3u8) vagy MP4 kezelése
-            if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
-                var hls = new Hls();
-                hls.loadSource(videoUrl);
-                hls.attachMedia(video);
-            } else {
-                video.src = videoUrl;
-            }
+            // 2. A Belső Player kódja (amit beletöltünk az Iframe-be)
+            // Ez egy teljes HTML oldal kódja szövegként
+            const innerHTML = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <style>
+                        body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+                        
+                        /* A trükk: A videó "apró", de fel van nagyítva */
+                        /* Ez néha megzavarja az érzékelőt, mert nem "teljes képernyős" videónak látja */
+                        video {
+                            width: 100%;
+                            height: 100%;
+                            object-fit: contain;
+                        }
+                        
+                        /* Indító gomb */
+                        #btn {
+                            position: absolute; z-index: 10;
+                            padding: 20px 40px; font-size: 24px;
+                            background: red; color: white; border: none; border-radius: 10px;
+                            cursor: pointer;
+                        }
+                    </style>
+                    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>
+                </head>
+                <body>
+                    <button id="btn" onclick="playVideo()">INDÍTÁS</button>
+                    
+                    <video id="v" playsinline webkit-playsinline></video>
+
+                    <script>
+                        var video = document.getElementById('v');
+                        var btn = document.getElementById('btn');
+                        var src = "${videoUrl}"; // A linket ide illesztjük be
+
+                        function playVideo() {
+                            btn.style.display = 'none';
+                            
+                            if (Hls.isSupported() && src.includes('.m3u8')) {
+                                var hls = new Hls();
+                                hls.loadSource(src);
+                                hls.attachMedia(video);
+                                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                                    video.play();
+                                });
+                            } else {
+                                video.src = src;
+                                video.play();
+                            }
+                        }
+                        
+                        // Kattintásra teljes képernyő kezelés
+                        video.addEventListener('click', function() {
+                             if (!document.fullscreenElement) {
+                                video.requestFullscreen().catch(e => {});
+                             }
+                        });
+                    <\/script>
+                </body>
+                </html>
+            `;
+
+            // 3. A kód beírása az Iframe-be
+            const frame = document.getElementById('video-frame');
+            const doc = frame.contentWindow.document;
+            doc.open();
+            doc.write(innerHTML);
+            doc.close();
+
         } else {
-            playBtn.innerText = "HIBA: Nincs URL megadva!";
-            playBtn.style.borderColor = "red";
-            playBtn.style.color = "red";
+            document.body.innerHTML = '<h1 style="color:white;text-align:center;">Hiba: Nincs URL!</h1>';
         }
-
-        // Indítás funkció
-        function startPlayback() {
-            if (!videoUrl) return;
-
-            // Gomb eltüntetése
-            startLayer.style.display = 'none';
-            
-            // Hang bekapcsolása és indítás
-            video.muted = false;
-            video.play().then(() => {
-                // Siker
-                console.log("Lejátszás elindult");
-                enterFullscreen(); // Megpróbáljuk automatikusan teljes képernyőre tenni
-            }).catch(error => {
-                // Ha hiba van, írjuk ki, ne legyen fekete a képernyő
-                startLayer.style.display = 'flex';
-                playBtn.innerHTML = "HIBA:<br>" + error.message;
-                playBtn.style.fontSize = "1rem";
-            });
-        }
-
-        // Teljes képernyő kérés (ha a böngésző engedi)
-        function enterFullscreen() {
-            if (video.requestFullscreen) {
-                video.requestFullscreen();
-            } else if (video.webkitRequestFullscreen) {
-                video.webkitRequestFullscreen(); // Safari/Android TV
-            } else if (video.msRequestFullscreen) {
-                video.msRequestFullscreen();
-            }
-        }
-        
-        // Dupla kattintásra is legyen teljes képernyő
-        video.addEventListener('click', enterFullscreen);
     </script>
 </body>
 </html>
