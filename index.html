@@ -2,142 +2,114 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Phantom Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background: black; overflow: hidden; user-select: none;
-        }
-
-        /* A videó konténer */
-        #video-container {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 1;
-        }
-
-        /* A videó stílusa (amikor majd létrejön) */
-        video {
-            width: 100%; height: 100%;
-            object-fit: contain;
-            background: black;
+            background: black; overflow: hidden;
         }
         
-        /* Fontos: Natív kontrollok letiltása CSS-sel is */
-        video::-webkit-media-controls { display: none !important; }
-
-        /* A "Pajzs" réteg: Erre kattintasz te, nem a videóra */
-        #interaction-layer {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 999; /* A videó felett */
-            background: transparent;
-            display: flex; justify-content: center; align-items: center;
-        }
-
-        /* Saját vezérlő gombok */
-        #play-icon {
-            font-size: 80px; color: white;
-            opacity: 0.8; display: none; /* Alapból rejtve */
-            text-shadow: 0 0 20px black;
-            cursor: pointer;
-        }
-
-        /* Betöltő animáció */
-        #loader {
-            color: white; font-family: sans-serif; font-size: 20px;
-            text-align: center;
+        /* Ez a konténer, amibe elrejtjük a cuccot */
+        #shadow-host {
+            width: 100vw; height: 100vh;
+            display: block;
         }
     </style>
 </head>
 <body>
 
-    <div id="video-container"></div>
-
-    <div id="interaction-layer" onclick="handleUserClick()">
-        <div id="loader">Böngésző kicselezése...<br>(Várj 3 másodpercet)</div>
-        <div id="play-icon"><i class="fas fa-play"></i></div>
-    </div>
+    <div id="shadow-host"></div>
 
     <script>
-        const container = document.getElementById('video-container');
-        const loader = document.getElementById('loader');
-        const playIcon = document.getElementById('play-icon');
-        let videoElement = null;
-
         // URL paraméter
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // 1. A TRÜKK: Késleltetett indítás
-        // Várunk 2500ms-t (2.5 mp), hogy a BrowseHere befejezze az oldal szkennelését
-        setTimeout(() => {
-            if (videoUrl) {
-                injectVideo();
-            } else {
-                loader.innerHTML = "HIBA: Nincs URL paraméter!";
-                loader.style.color = "red";
-            }
-        }, 2500);
+        // 1. LÉTREHOZZUK A ZÁRT ÁRNYÉK DOM-OT (Shadow DOM)
+        // A "mode: 'closed'" a kulcs! Ez elvileg kizárja a külső szkripteket.
+        const host = document.getElementById('shadow-host');
+        const shadow = host.attachShadow({ mode: 'closed' });
 
-        // 2. A Videó létrehozása "a semmiből"
-        function injectVideo() {
-            loader.style.display = 'none'; // Szöveg eltüntetése
-            playIcon.style.display = 'block'; // Ikon megjelenítése
-
-            // Létrehozzuk a <video> elemet JavaScriptben
-            videoElement = document.createElement('video');
-            videoElement.setAttribute('playsinline', '');
-            videoElement.setAttribute('webkit-playsinline', '');
-            videoElement.setAttribute('preload', 'auto');
-            // Kikapcsoljuk a natív vezérlést
-            videoElement.controls = false; 
+        // 2. Stílusok a bunker belsejében
+        const style = document.createElement('style');
+        style.textContent = `
+            :host { display: block; width: 100%; height: 100%; position: relative; }
             
-            // Hozzáadjuk a konténerhez
-            container.appendChild(videoElement);
+            /* A videó kitölti a teret */
+            video {
+                width: 100%; height: 100%;
+                object-fit: contain;
+                background: black;
+            }
+            
+            /* Natív vezérlők tiltása */
+            video::-webkit-media-controls { display: none !important; }
+            
+            /* Saját gomb réteg */
+            .overlay {
+                position: absolute; top: 0; left: 0;
+                width: 100%; height: 100%;
+                display: flex; justify-content: center; align-items: center;
+                z-index: 10; cursor: pointer;
+            }
+            .btn {
+                padding: 20px 40px; background: red; color: white;
+                font-size: 24px; border-radius: 10px; border: 2px solid white;
+                font-family: sans-serif; font-weight: bold;
+                display: none; /* Alapból rejtve */
+            }
+        `;
+        shadow.appendChild(style);
 
-            // Forrás betöltése
+        // 3. A Videó elem létrehozása
+        const video = document.createElement('video');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('webkit-playsinline', '');
+        shadow.appendChild(video);
+
+        // 4. Saját gomb (hogy tudj indítani)
+        const overlay = document.createElement('div');
+        overlay.className = 'overlay';
+        
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.innerText = 'LEJÁTSZÁS';
+        btn.style.display = 'block'; // Kezdéskor látszik
+        
+        overlay.appendChild(btn);
+        shadow.appendChild(overlay);
+
+        // 5. Logika
+        if (videoUrl) {
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
                 const hls = new Hls();
                 hls.loadSource(videoUrl);
-                hls.attachMedia(videoElement);
-                hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    // Nem indítjuk el automatán, kattintás kell!
-                });
+                hls.attachMedia(video);
             } else {
-                videoElement.src = videoUrl;
+                video.src = videoUrl;
             }
+        } else {
+            btn.innerText = "Nincs URL!";
         }
 
-        // 3. Kattintás kezelése (Saját Play/Pause)
-        function handleUserClick() {
-            if (!videoElement) return; // Ha még nem jött létre, ne csináljon semmit
-
-            if (videoElement.paused) {
-                videoElement.play()
-                    .then(() => {
-                        playIcon.style.display = 'none'; // Ikon eltűnik
-                        playIcon.innerHTML = '<i class="fas fa-pause"></i>'; // Ikon csere
-                        // Kis idő múlva pause ikon is eltűnik
-                    })
-                    .catch(e => alert("Indítási hiba: " + e));
+        // Kattintás kezelés a bunkerben
+        overlay.addEventListener('click', (e) => {
+            e.stopPropagation(); // Ne engedjük ki a kattintást a bunkerből!
+            
+            if (video.paused) {
+                video.play().then(() => {
+                    btn.style.display = 'none';
+                }).catch(err => alert(err));
             } else {
-                videoElement.pause();
-                playIcon.innerHTML = '<i class="fas fa-play"></i>';
-                playIcon.style.display = 'block';
+                video.pause();
+                btn.style.display = 'block';
             }
-        }
-        
-        // Ha a videó véget ér
-        if(videoElement) {
-            videoElement.onended = () => {
-                playIcon.style.display = 'block';
-            };
-        }
+        });
+
+        // Megpróbáljuk letiltani a jobb klikket/menüt is
+        host.addEventListener('contextmenu', e => e.preventDefault());
     </script>
 </body>
 </html>
