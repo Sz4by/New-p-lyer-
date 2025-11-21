@@ -2,150 +2,135 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TV Player - Canvas Mode</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="layoutmode" content="standard">
+    <title>Full TV Player</title>
+    
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
     <style>
+        /* Minden margó törlése, hogy ne legyen fehér csík a szélén */
         body, html {
-            margin: 0; padding: 0;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            overflow: hidden; /* Görgetősáv letiltása */
+        }
+
+        /* A videó beállítása: Fixen az ablakhoz ragasztva */
+        #main-video {
+            position: fixed; /* Ez tartja a helyén, hogy ne csússzon el */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Ez biztosítja, hogy a videó ne nyúljon meg, de kitöltse a helyet */
+            z-index: 1;
+            background: #000;
+            outline: none;
+            border: none;
+        }
+
+        /* Indító gomb réteg (hogy biztosan elinduljon) */
+        #start-layer {
+            position: absolute;
+            top: 0; left: 0;
             width: 100%; height: 100%;
-            background: #000; overflow: hidden; /* Fekete háttér, görgetés tiltva */
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999; /* Legyen minden felett */
+            cursor: pointer;
         }
 
-        /* 1. A "Láthatatlan" Videó (A TV elől elrejtve) */
-        #source-video {
-            position: absolute; top: 0; left: 0;
-            width: 1px; height: 1px; /* Ha 0, akkor megáll a lejátszás */
-            opacity: 0.001; /* Majdnem láthatatlan */
-            z-index: -100; /* A háttér mögött */
-            pointer-events: none; /* Nem lehet rákattintani */
-        }
-
-        /* 2. A Vászon (Ezt látod te) */
-        #screen-canvas {
-            display: block;
-            width: 100vw; height: 100vh;
-            object-fit: contain; /* Hogy ne torzuljon a kép */
-        }
-
-        /* 3. Indító Gomb (Start Overlay) */
-        #overlay {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
-            display: flex; flex-direction: column;
-            justify-content: center; align-items: center;
-            z-index: 500; cursor: pointer;
-        }
         #play-btn {
-            font-size: 24px; color: white; font-weight: bold;
-            border: 3px solid red; padding: 15px 40px;
-            background: black; border-radius: 50px;
+            font-size: 2rem;
+            color: white;
+            padding: 15px 40px;
+            border: 3px solid white;
+            border-radius: 10px;
+            background: transparent;
             text-transform: uppercase;
-            box-shadow: 0 0 20px rgba(255,0,0,0.5);
-        }
-        #status {
-            margin-top: 20px; color: #ccc; font-family: sans-serif;
+            font-family: sans-serif;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
 
-    <div id="overlay" onclick="startPlayer()">
-        <div id="play-btn">LEJÁTSZÁS</div>
-        <div id="status">Várakozás a linkre...</div>
+    <div id="start-layer" onclick="startPlayback()">
+        <div id="play-btn">VIDEÓ INDÍTÁSA</div>
     </div>
 
-    <canvas id="screen-canvas"></canvas>
-
-    <video id="source-video" crossorigin="anonymous" playsinline webkit-playsinline muted></video>
+    <video id="main-video" 
+           playsinline 
+           webkit-playsinline 
+           x5-video-player-type="h5-page" 
+           x5-video-player-fullscreen="true"
+           preload="auto">
+    </video>
 
     <script>
-        // Elemek kiválasztása
-        const video = document.getElementById('source-video');
-        const canvas = document.getElementById('screen-canvas');
-        const ctx = canvas.getContext('2d', { alpha: false }); // Gyorsítás
-        const overlay = document.getElementById('overlay');
-        const statusText = document.getElementById('status');
+        var video = document.getElementById('main-video');
+        var startLayer = document.getElementById('start-layer');
+        var playBtn = document.getElementById('play-btn');
 
-        // URL paraméter (Pl: ?url=http://...)
+        // URL paraméter beolvasása
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // Vászon méretezése ablakhoz
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        // 1. Videó betöltése
         if (videoUrl) {
-            statusText.innerText = "Videó betöltve. Kattints az indításhoz!";
-            
+            // HLS (.m3u8) vagy MP4 kezelése
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
-                const hls = new Hls();
+                var hls = new Hls();
                 hls.loadSource(videoUrl);
                 hls.attachMedia(video);
-                hls.on(Hls.Events.ERROR, function (event, data) {
-                   if (data.fatal) statusText.innerText = "HLS Hiba: " + data.type;
-                });
             } else {
                 video.src = videoUrl;
             }
         } else {
-            statusText.innerHTML = "HIBA: Nincs videó link!<br>Használd így: index.html?url=LINK";
-            statusText.style.color = "red";
-            document.getElementById('play-btn').style.display = "none";
+            playBtn.innerText = "HIBA: Nincs URL megadva!";
+            playBtn.style.borderColor = "red";
+            playBtn.style.color = "red";
         }
 
-        // 2. A Varázslat: Képkockák másolása a videóról a vászonra
-        function renderLoop() {
-            if (!video.paused && !video.ended) {
-                // Méretarányos rajzolás számítása
-                const hRatio = canvas.width / video.videoWidth;
-                const vRatio = canvas.height / video.videoHeight;
-                const ratio  = Math.min(hRatio, vRatio);
-                
-                const centerShift_x = (canvas.width - video.videoWidth * ratio) / 2;
-                const centerShift_y = (canvas.height - video.videoHeight * ratio) / 2;  
+        // Indítás funkció
+        function startPlayback() {
+            if (!videoUrl) return;
 
-                // Fekete háttér törlése és kép rajzolása
-                ctx.fillStyle = "black";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
-                              centerShift_x, centerShift_y, video.videoWidth * ratio, video.videoHeight * ratio);
-            }
-            // Következő képkocka kérése (kb. 60fps)
-            requestAnimationFrame(renderLoop);
-        }
-
-        // 3. Indítás gomb
-        function startPlayer() {
-            if(!videoUrl) return;
-
-            video.muted = false; // Hang felhangosítása
+            // Gomb eltüntetése
+            startLayer.style.display = 'none';
             
+            // Hang bekapcsolása és indítás
+            video.muted = false;
             video.play().then(() => {
-                overlay.style.display = 'none'; // Gomb eltűnik
-                renderLoop(); // Animáció indul
-            }).catch(err => {
-                console.error(err);
-                statusText.innerText = "Indítási hiba (CORS vagy formátum)!";
-                statusText.style.color = "red";
+                // Siker
+                console.log("Lejátszás elindult");
+                enterFullscreen(); // Megpróbáljuk automatikusan teljes képernyőre tenni
+            }).catch(error => {
+                // Ha hiba van, írjuk ki, ne legyen fekete a képernyő
+                startLayer.style.display = 'flex';
+                playBtn.innerHTML = "HIBA:<br>" + error.message;
+                playBtn.style.fontSize = "1rem";
             });
         }
 
-        // 4. Kattintásra Pause/Play (a vásznon)
-        canvas.addEventListener('click', () => {
-            if(video.paused) {
-                video.play();
-                renderLoop();
-            } else {
-                video.pause();
+        // Teljes képernyő kérés (ha a böngésző engedi)
+        function enterFullscreen() {
+            if (video.requestFullscreen) {
+                video.requestFullscreen();
+            } else if (video.webkitRequestFullscreen) {
+                video.webkitRequestFullscreen(); // Safari/Android TV
+            } else if (video.msRequestFullscreen) {
+                video.msRequestFullscreen();
             }
-        });
+        }
+        
+        // Dupla kattintásra is legyen teljes képernyő
+        video.addEventListener('click', enterFullscreen);
     </script>
 </body>
 </html>
