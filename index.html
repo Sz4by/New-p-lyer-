@@ -3,14 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stream & Cast Player</title>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <title>Direct Link Player</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             background: black; overflow: hidden; 
-            cursor: none !important; /* Nincs egér */
+            cursor: none !important; /* Egér elrejtése */
             touch-action: none;
         }
         #safe-zone { width: 100vw; height: 100vh; display: block; outline: none; }
@@ -22,7 +21,8 @@
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const videoUrl = urlParams.get('url');
+        // Dekódoljuk a linket, amit a start.html küldött
+        const videoUrl = decodeURIComponent(urlParams.get('url'));
 
         const host = document.getElementById('safe-zone');
         host.focus();
@@ -40,7 +40,7 @@
             video { width: 100%; height: 100%; object-fit: contain; background: black; }
             video::-webkit-media-controls { display: none !important; }
 
-            /* Visszajelzés középen */
+            /* Középső visszajelzés */
             .center-feedback {
                 position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
                 font-size: 80px; color: rgba(255,255,255,0.9);
@@ -50,13 +50,10 @@
             }
             .center-text { font-size: 30px; margin-top: 15px; color: #fff; font-weight: bold; }
 
-            /* Vezérlősáv (Biztonsági kerettel az Overscan ellen) */
+            /* Vezérlősáv */
             .controls {
-                position: absolute; 
-                bottom: 30px; 
-                left: 4%; width: 92%; height: 70px;
-                background: rgba(20, 20, 20, 0.9); 
-                border-radius: 15px; border: 1px solid #333;
+                position: absolute; bottom: 30px; left: 4%; width: 92%; height: 70px;
+                background: rgba(20, 20, 20, 0.9); border-radius: 15px; border: 1px solid #333;
                 display: flex; align-items: center; padding: 0 20px; 
                 box-sizing: border-box; z-index: 40; transition: opacity 0.3s;
             }
@@ -112,18 +109,19 @@
         const durText = container.querySelector('#dur');
         const controlsDiv = container.querySelector('#controls');
 
-        if (videoUrl) {
-            if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
-                const hls = new Hls();
-                hls.loadSource(videoUrl);
-                hls.attachMedia(vid);
-            } else {
-                vid.src = videoUrl;
-            }
+        if (videoUrl && videoUrl !== 'null') {
+            // Ez a lényeg: simán betöltjük a linket
+            vid.src = videoUrl;
+            
+            // Hibakezelés
+            vid.onerror = function() {
+                showFeedback('fa-exclamation-triangle', 'Hiba! Lejárt a link?');
+            };
         } else {
-            showFeedback('fa-exclamation', 'Nincs URL');
+            showFeedback('fa-link', 'Nincs link');
         }
 
+        // Visszajelzés
         let fbTimer;
         function showFeedback(iconClass, text = '') {
             fbIcon.className = `fas ${iconClass}`;
@@ -133,19 +131,28 @@
             fbTimer = setTimeout(() => { feedback.style.display = 'none'; }, 1000);
         }
 
+        // Lejátszás
         function togglePlay() {
             if (vid.paused) {
-                vid.play(); showFeedback('fa-play'); btnPlay.innerHTML = '<i class="fas fa-pause"></i>'; resetTimer();
+                vid.play().catch(e => showFeedback('fa-exclamation', 'Hiba'));
+                showFeedback('fa-play'); 
+                btnPlay.innerHTML = '<i class="fas fa-pause"></i>'; 
+                resetTimer();
             } else {
-                vid.pause(); showFeedback('fa-pause'); btnPlay.innerHTML = '<i class="fas fa-play"></i>'; controlsDiv.classList.remove('hidden');
+                vid.pause(); 
+                showFeedback('fa-pause'); 
+                btnPlay.innerHTML = '<i class="fas fa-play"></i>'; 
+                controlsDiv.classList.remove('hidden');
             }
         }
 
         function seekVideo(seconds) {
-            vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + seconds));
-            const icon = seconds > 0 ? 'fa-forward' : 'fa-backward';
-            showFeedback(icon, (seconds>0?'+':'') + seconds + 's');
-            resetTimer();
+            if(vid.duration) {
+                vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + seconds));
+                const icon = seconds > 0 ? 'fa-forward' : 'fa-backward';
+                showFeedback(icon, (seconds>0?'+':'') + seconds + 's');
+                resetTimer();
+            }
         }
 
         function changeVolume(change) {
@@ -161,25 +168,15 @@
             const key = e.key; const code = e.keyCode;
             
             // OK / Play
-            if (code === 13 || code === 179 || key === 'Enter' || key === 'MediaPlayPause') { 
-                togglePlay(); e.preventDefault(); return; 
-            }
-            // Jobbra (Tekerés)
-            if (code === 39 || code === 228 || key === 'ArrowRight') { 
-                seekVideo(10); e.preventDefault(); return; 
-            }
-            // Balra (Tekerés)
-            if (code === 37 || code === 227 || key === 'ArrowLeft') { 
-                seekVideo(-10); e.preventDefault(); return; 
-            }
+            if (code === 13 || code === 179 || key === 'Enter' || key === 'MediaPlayPause') { togglePlay(); e.preventDefault(); return; }
+            // Jobbra
+            if (code === 39 || code === 228 || key === 'ArrowRight') { seekVideo(10); e.preventDefault(); return; }
+            // Balra
+            if (code === 37 || code === 227 || key === 'ArrowLeft') { seekVideo(-10); e.preventDefault(); return; }
             // Fel (Hangerő +)
-            if (code === 38 || key === 'ArrowUp') { 
-                changeVolume(0.1); e.preventDefault(); return; 
-            }
+            if (code === 38 || key === 'ArrowUp') { changeVolume(0.1); e.preventDefault(); return; }
             // Le (Hangerő -)
-            if (code === 40 || key === 'ArrowDown') { 
-                changeVolume(-0.1); e.preventDefault(); return; 
-            }
+            if (code === 40 || key === 'ArrowDown') { changeVolume(-0.1); e.preventDefault(); return; }
         });
 
         btnPlay.onclick = togglePlay;
