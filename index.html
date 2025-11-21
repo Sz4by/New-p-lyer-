@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TV Safe Player</title>
+    <title>Stream & Cast Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             background: black; overflow: hidden; 
-            cursor: none !important; /* Egér elrejtése */
+            cursor: none !important; /* Nincs egér */
             touch-action: none;
         }
         #safe-zone { width: 100vw; height: 100vh; display: block; outline: none; }
@@ -50,22 +50,15 @@
             }
             .center-text { font-size: 30px; margin-top: 15px; color: #fff; font-weight: bold; }
 
-            /* --- VEZÉRLŐSÁV JAVÍTÁSA (OVERSCAN ELLEN) --- */
+            /* Vezérlősáv (Biztonsági kerettel az Overscan ellen) */
             .controls {
                 position: absolute; 
-                bottom: 30px; /* Megemeljük az aljától */
-                left: 4%;     /* Beljebb hozzuk balról */
-                width: 92%;   /* Nem 100%, így nem lóg ki jobbra */
-                height: 70px;
-                
-                /* Szépítés: Lekerekített sarkok és háttér */
+                bottom: 30px; 
+                left: 4%; width: 92%; height: 70px;
                 background: rgba(20, 20, 20, 0.9); 
-                border-radius: 15px;
-                border: 1px solid #333;
-                
+                border-radius: 15px; border: 1px solid #333;
                 display: flex; align-items: center; padding: 0 20px; 
-                box-sizing: border-box; /* Fontos, hogy a padding ne növelje a méretet */
-                z-index: 40; transition: opacity 0.3s;
+                box-sizing: border-box; z-index: 40; transition: opacity 0.3s;
             }
             
             button { background: none; border: none; color: white; font-size: 24px; width: 45px; }
@@ -91,7 +84,7 @@
                 <span id="fb-text" class="center-text"></span>
             </div>
             
-            <video id="v" playsinline webkit-playsinline></video>
+            <video id="v" playsinline webkit-playsinline crossorigin="anonymous"></video>
 
             <div id="controls" class="controls">
                 <button id="btn-play"><i class="fas fa-play"></i></button>
@@ -107,7 +100,7 @@
         `;
         shadow.appendChild(container);
 
-        // LOGIKA (Ugyanaz, mint az előbb, csak a kinézet javult)
+        // LOGIKA
         const vid = container.querySelector('#v');
         const feedback = container.querySelector('#feedback');
         const fbIcon = container.querySelector('#fb-icon');
@@ -131,7 +124,6 @@
             showFeedback('fa-exclamation', 'Nincs URL');
         }
 
-        // Visszajelzés
         let fbTimer;
         function showFeedback(iconClass, text = '') {
             fbIcon.className = `fas ${iconClass}`;
@@ -141,7 +133,6 @@
             fbTimer = setTimeout(() => { feedback.style.display = 'none'; }, 1000);
         }
 
-        // Funkciók
         function togglePlay() {
             if (vid.paused) {
                 vid.play(); showFeedback('fa-play'); btnPlay.innerHTML = '<i class="fas fa-pause"></i>'; resetTimer();
@@ -165,19 +156,30 @@
             resetTimer();
         }
 
-        // Gombok
+        // GOMBOK
         host.addEventListener('keydown', (e) => {
             const key = e.key; const code = e.keyCode;
-            // OK/Play
-            if (code === 13 || code === 179 || key === 'Enter' || key === 'MediaPlayPause') { togglePlay(); e.preventDefault(); return; }
-            // Jobbra
-            if (code === 39 || code === 228 || key === 'ArrowRight') { seekVideo(10); e.preventDefault(); return; }
-            // Balra
-            if (code === 37 || code === 227 || key === 'ArrowLeft') { seekVideo(-10); e.preventDefault(); return; }
-            // Fel (Hangerő)
-            if (code === 38 || key === 'ArrowUp') { changeVolume(0.1); e.preventDefault(); return; }
-            // Le (Hangerő)
-            if (code === 40 || key === 'ArrowDown') { changeVolume(-0.1); e.preventDefault(); return; }
+            
+            // OK / Play
+            if (code === 13 || code === 179 || key === 'Enter' || key === 'MediaPlayPause') { 
+                togglePlay(); e.preventDefault(); return; 
+            }
+            // Jobbra (Tekerés)
+            if (code === 39 || code === 228 || key === 'ArrowRight') { 
+                seekVideo(10); e.preventDefault(); return; 
+            }
+            // Balra (Tekerés)
+            if (code === 37 || code === 227 || key === 'ArrowLeft') { 
+                seekVideo(-10); e.preventDefault(); return; 
+            }
+            // Fel (Hangerő +)
+            if (code === 38 || key === 'ArrowUp') { 
+                changeVolume(0.1); e.preventDefault(); return; 
+            }
+            // Le (Hangerő -)
+            if (code === 40 || key === 'ArrowDown') { 
+                changeVolume(-0.1); e.preventDefault(); return; 
+            }
         });
 
         btnPlay.onclick = togglePlay;
