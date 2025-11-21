@@ -3,125 +3,264 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Fixed TV Player</title>
-    
+    <title>Custom TV Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
     <style>
-        /* 1. A weboldal legyen a képernyő mérete */
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            overflow: hidden; /* Nincs görgetés */
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: #000; overflow: hidden;
+            font-family: Arial, sans-serif;
+            user-select: none; /* Kijelölés tiltása */
         }
 
-        /* 2. A VIDEÓ BEÁLLÍTÁSA - A LEGFONTOSABB RÉSZ */
-        video {
+        /* 1. A Videó (Passzív, a háttérben) */
+        #video-layer {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: contain; /* Vagy 'cover', ha azt akarod, hogy ne legyen fekete csík */
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: contain;
             z-index: 1;
-            
-            /* EZ A TITOK: */
-            pointer-events: none; /* A videó NEM kattintható! A TV nem érzi az egeret rajta. */
+            /* Megpróbáljuk elrejteni a natív vezérlőket */
+        }
+        /* Webkit alapú böngészők natív vezérlőinek tiltása */
+        video::-webkit-media-controls { display: none !important; }
+        video::-webkit-media-controls-enclosure { display: none !important; }
+
+        /* 2. A Nagy Kattintós Felület (Play/Pause középen) */
+        #click-area {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 85%; /* Alul helyet hagyunk a sávnak */
+            z-index: 10;
+            cursor: pointer;
         }
 
-        /* 3. Vezérlő Réteg (Erre kattintasz a videó helyett) */
-        #control-layer {
+        /* 3. A MI SAJÁT VEZÉRLŐSÁVUNK (Ez a lényeg!) */
+        #custom-controls {
             position: absolute;
-            top: 0;
-            left: 0;
+            bottom: 0; left: 0;
             width: 100%;
-            height: 100%;
-            z-index: 999; /* A videó felett van */
+            height: 80px; /* Magas sáv, hogy TV-n is eltaláld */
+            background: rgba(0, 0, 0, 0.8); /* Félig átlátszó fekete */
             display: flex;
-            flex-direction: column;
-            justify-content: center;
             align-items: center;
-            background: rgba(0,0,0,0.4); /* Sötétítés, amíg áll a videó */
-            cursor: pointer; /* Kéz ikon */
+            padding: 0 20px;
+            box-sizing: border-box;
+            z-index: 99999; /* Mindig legfelül legyen! */
+            transition: opacity 0.5s;
         }
 
-        /* Play ikon stílusa */
-        #play-icon {
-            width: 80px;
-            height: 80px;
-            background: red;
-            border-radius: 50%;
+        /* Gombok stílusa */
+        .btn {
+            color: white;
+            font-size: 24px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            width: 50px;
+            text-align: center;
+        }
+
+        /* Idő kijelző */
+        .time-display {
+            color: white;
+            font-size: 18px;
+            margin: 0 15px;
+            min-width: 100px;
+            text-align: center;
+        }
+
+        /* Csúszka (Seek bar) */
+        .seek-bar-container {
+            flex-grow: 1;
+            margin: 0 15px;
             position: relative;
-            box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+            height: 100%;
+            display: flex;
+            align-items: center;
         }
-        #play-icon::after {
-            content: '';
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #555;
+            border-radius: 5px;
+            outline: none;
+            cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: red; /* Piros gomb a csúszkán */
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+        }
+
+        /* Nagy Play gomb középen indításkor */
+        #big-play-btn {
             position: absolute;
-            top: 50%; left: 55%;
+            top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            border-left: 25px solid white;
-            border-top: 15px solid transparent;
-            border-bottom: 15px solid transparent;
+            font-size: 80px;
+            color: rgba(255,255,255,0.8);
+            pointer-events: none;
+            z-index: 20;
+            display: none; /* Alapból rejtve */
         }
 
-        /* Ha megy a videó, tűnjön el a sötétítés */
-        .playing #control-layer {
-            background: transparent;
+        /* Inaktivitás esetén eltűnik a sáv */
+        body.inactive #custom-controls {
+            opacity: 0;
         }
-        .playing #play-icon {
-            display: none; /* Ikon eltüntetése */
+        body.inactive {
+            cursor: none; /* Egér eltüntetése */
         }
-
     </style>
 </head>
 <body>
 
-    <video id="my-video" playsinline webkit-playsinline></video>
+    <video id="video-layer" playsinline webkit-playsinline></video>
 
-    <div id="control-layer" onclick="togglePlay()">
-        <div id="play-icon"></div>
+    <div id="big-play-btn"><i class="fas fa-play"></i></div>
+
+    <div id="click-area" onclick="togglePlay()"></div>
+
+    <div id="custom-controls">
+        <button class="btn" id="play-pause-btn" onclick="togglePlay()">
+            <i class="fas fa-play"></i>
+        </button>
+
+        <div class="time-display">
+            <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+        </div>
+
+        <div class="seek-bar-container">
+            <input type="range" id="seek-bar" min="0" value="0" step="0.1" oninput="userScrubbing()" onchange="userFinishedScrubbing()">
+        </div>
+
+        <button class="btn" onclick="toggleFullscreen()">
+            <i class="fas fa-expand"></i>
+        </button>
     </div>
 
     <script>
-        var video = document.getElementById('my-video');
-        var controls = document.getElementById('control-layer');
+        const video = document.getElementById('video-layer');
+        const playBtn = document.getElementById('play-pause-btn');
+        const bigPlayBtn = document.getElementById('big-play-btn');
+        const seekBar = document.getElementById('seek-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const durationEl = document.getElementById('duration');
+        const controls = document.getElementById('custom-controls');
 
-        // URL paraméter betöltése
+        // URL paraméter
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
+        // 1. Videó betöltése
         if (videoUrl) {
-            // HLS vagy MP4 betöltése
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
-                var hls = new Hls();
+                const hls = new Hls();
                 hls.loadSource(videoUrl);
                 hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // video.play(); // Automata start opcionális
+                    updatePlayIcon();
+                });
             } else {
                 video.src = videoUrl;
             }
         }
 
-        // KATTINTÁS KEZELÉSE
+        // 2. Lejátszás vezérlés
         function togglePlay() {
-            if (!videoUrl) return;
-
             if (video.paused) {
-                // Indítás
-                video.play().then(() => {
-                    // Ha elindult, levesszük a sötétítést és az ikont
-                    document.body.classList.add('playing');
-                }).catch(e => {
-                    alert("Hiba: " + e);
-                });
+                video.play();
             } else {
-                // Megállítás
                 video.pause();
-                document.body.classList.remove('playing');
+            }
+            updatePlayIcon();
+            resetTimer();
+        }
+
+        function updatePlayIcon() {
+            if (video.paused) {
+                playBtn.innerHTML = '<i class="fas fa-play"></i>';
+                bigPlayBtn.style.display = 'block';
+            } else {
+                playBtn.innerHTML = '<i class="fas fa-pause"></i>';
+                bigPlayBtn.style.display = 'none';
             }
         }
+
+        video.addEventListener('play', updatePlayIcon);
+        video.addEventListener('pause', updatePlayIcon);
+
+        // 3. Idő és Csúszka frissítése
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m}:${s < 10 ? '0' : ''}${s}`;
+        }
+
+        video.addEventListener('timeupdate', () => {
+            if (!isScrubbing) {
+                seekBar.value = video.currentTime;
+                currentTimeEl.innerText = formatTime(video.currentTime);
+            }
+            // Csúszka maximumának beállítása, ha megvan a videó hossza
+            if(video.duration) {
+                seekBar.max = video.duration;
+                durationEl.innerText = formatTime(video.duration);
+            }
+        });
+
+        // 4. Tekerés (Scrubbing)
+        let isScrubbing = false;
+        function userScrubbing() {
+            isScrubbing = true;
+            // Opcionális: valós idejű tekerés
+             video.currentTime = seekBar.value;
+        }
+        function userFinishedScrubbing() {
+            isScrubbing = false;
+            video.currentTime = seekBar.value;
+            if(video.paused) video.play();
+        }
+
+        // 5. Teljes képernyő (CSS alapú, nem natív API, hogy ne rontsa el a TV)
+        // Ez csak elrejti a böngésző sávjait mobilon, TV-n nem mindig hatásos
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(e=>{});
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 6. Inaktivitás kezelése (Sáv elrejtése)
+        let inactivityTimer;
+        function resetTimer() {
+            document.body.classList.remove('inactive');
+            clearTimeout(inactivityTimer);
+            inactivityTimer = setTimeout(() => {
+                if (!video.paused) {
+                    document.body.classList.add('inactive');
+                }
+            }, 4000); // 4 másodperc után tűnik el
+        }
+        
+        window.addEventListener('mousemove', resetTimer);
+        window.addEventListener('click', resetTimer);
+        window.addEventListener('keydown', resetTimer);
+
     </script>
 </body>
 </html>
