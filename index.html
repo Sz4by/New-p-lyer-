@@ -3,195 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Anti-Detect Player</title>
-    
+    <title>Phantom Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 
     <style>
         body, html {
             margin: 0; padding: 0; width: 100%; height: 100%;
-            background: #000; overflow: hidden; user-select: none;
+            background: black; overflow: hidden; user-select: none;
         }
 
-        /* 1. A LÁTHATATLAN VIDEÓ (A forrás) */
-        #hidden-video {
-            display: none; /* Elrejtjük teljesen, hogy a TV ne lássa */
-        }
-
-        /* 2. A VÁSZON (Ezt látod te - ez technikailag egy KÉP, nem videó) */
-        #render-canvas {
-            display: block;
-            width: 100vw; height: 100vh;
-            object-fit: contain;
-        }
-
-        /* 3. BETÖLTŐ ÜZENET */
-        #status-msg {
-            position: absolute; top: 20px; left: 20px;
-            color: yellow; background: rgba(0,0,0,0.7);
-            padding: 10px; font-family: monospace; z-index: 50;
-            display: none;
-        }
-
-        /* 4. VEZÉRLŐK (Mivel ez csak egy vászon, kellenek saját gombok) */
-        #controls {
-            position: absolute; bottom: 0; left: 0;
-            width: 100%; height: 80px;
-            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 100;
-            opacity: 0; transition: opacity 0.3s;
-        }
-        body:hover #controls, body.paused #controls { opacity: 1; }
-
-        .btn {
-            background: none; border: none; color: white;
-            font-size: 30px; margin: 0 20px; cursor: pointer;
-        }
-        
-        /* Nagy Play gomb középen */
-        #overlay-play {
+        /* A videó konténer */
+        #video-container {
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
+            z-index: 1;
+        }
+
+        /* A videó stílusa (amikor majd létrejön) */
+        video {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            background: black;
+        }
+        
+        /* Fontos: Natív kontrollok letiltása CSS-sel is */
+        video::-webkit-media-controls { display: none !important; }
+
+        /* A "Pajzs" réteg: Erre kattintasz te, nem a videóra */
+        #interaction-layer {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 999; /* A videó felett */
+            background: transparent;
             display: flex; justify-content: center; align-items: center;
-            background: rgba(0,0,0,0.6); z-index: 90;
+        }
+
+        /* Saját vezérlő gombok */
+        #play-icon {
+            font-size: 80px; color: white;
+            opacity: 0.8; display: none; /* Alapból rejtve */
+            text-shadow: 0 0 20px black;
             cursor: pointer;
         }
-        #overlay-icon {
-            font-size: 80px; color: white; border: 4px solid white;
-            border-radius: 50%; width: 120px; height: 120px;
-            display: flex; justify-content: center; align-items: center;
+
+        /* Betöltő animáció */
+        #loader {
+            color: white; font-family: sans-serif; font-size: 20px;
+            text-align: center;
         }
     </style>
 </head>
-<body class="paused">
+<body>
 
-    <div id="status-msg"></div>
+    <div id="video-container"></div>
 
-    <div id="overlay-play" onclick="togglePlay()">
-        <div id="overlay-icon"><i class="fas fa-play"></i></div>
-    </div>
-
-    <canvas id="render-canvas"></canvas>
-
-    <video id="hidden-video" playsinline webkit-playsinline crossorigin="anonymous"></video>
-
-    <div id="controls">
-        <button class="btn" onclick="togglePlay()"><i id="play-btn-icon" class="fas fa-play"></i></button>
-        <button class="btn" onclick="toggleSound()"><i id="sound-btn-icon" class="fas fa-volume-mute"></i></button>
-        <button class="btn" onclick="toggleFullscreen()"><i class="fas fa-expand"></i></button>
+    <div id="interaction-layer" onclick="handleUserClick()">
+        <div id="loader">Böngésző kicselezése...<br>(Várj 3 másodpercet)</div>
+        <div id="play-icon"><i class="fas fa-play"></i></div>
     </div>
 
     <script>
-        const video = document.getElementById('hidden-video');
-        const canvas = document.getElementById('render-canvas');
-        const ctx = canvas.getContext('2d', { alpha: false }); // Gyorsítás
-        const status = document.getElementById('status-msg');
-        const overlay = document.getElementById('overlay-play');
-        const playBtnIcon = document.getElementById('play-btn-icon');
+        const container = document.getElementById('video-container');
+        const loader = document.getElementById('loader');
+        const playIcon = document.getElementById('play-icon');
+        let videoElement = null;
 
         // URL paraméter
         const urlParams = new URLSearchParams(window.location.search);
-        let videoUrl = urlParams.get('url');
-        // Opció: Proxy használata (?proxy=true)
-        const useProxy = urlParams.get('proxy');
+        const videoUrl = urlParams.get('url');
 
-        // Méretezés
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        window.addEventListener('resize', resize);
-        resize();
-
-        if (videoUrl) {
-            // HA FEKETE A KÉP, a CORS miatt van. 
-            // Ha a link engedi, működni fog. Ha nem, proxy kell.
-            if(useProxy) {
-                status.style.display = 'block';
-                status.innerText = "Proxy mód bekapcsolva...";
-                // Egy nyilvános CORS proxy elé fűzése (teszteléshez)
-                // Megjegyzés: Élesben saját proxy javasolt!
-                videoUrl = 'https://corsproxy.io/?' + encodeURIComponent(videoUrl);
+        // 1. A TRÜKK: Késleltetett indítás
+        // Várunk 2500ms-t (2.5 mp), hogy a BrowseHere befejezze az oldal szkennelését
+        setTimeout(() => {
+            if (videoUrl) {
+                injectVideo();
+            } else {
+                loader.innerHTML = "HIBA: Nincs URL paraméter!";
+                loader.style.color = "red";
             }
+        }, 2500);
 
+        // 2. A Videó létrehozása "a semmiből"
+        function injectVideo() {
+            loader.style.display = 'none'; // Szöveg eltüntetése
+            playIcon.style.display = 'block'; // Ikon megjelenítése
+
+            // Létrehozzuk a <video> elemet JavaScriptben
+            videoElement = document.createElement('video');
+            videoElement.setAttribute('playsinline', '');
+            videoElement.setAttribute('webkit-playsinline', '');
+            videoElement.setAttribute('preload', 'auto');
+            // Kikapcsoljuk a natív vezérlést
+            videoElement.controls = false; 
+            
+            // Hozzáadjuk a konténerhez
+            container.appendChild(videoElement);
+
+            // Forrás betöltése
             if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
                 const hls = new Hls();
                 hls.loadSource(videoUrl);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.ERROR, (e, data) => {
-                    if(data.fatal) {
-                        status.style.display = 'block';
-                        status.innerText = "Hiba: " + data.type;
-                    }
+                hls.attachMedia(videoElement);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // Nem indítjuk el automatán, kattintás kell!
                 });
             } else {
-                video.src = videoUrl;
+                videoElement.src = videoUrl;
             }
-        } else {
-            status.style.display = 'block';
-            status.innerHTML = "Nincs URL! <br> Használd: ?url=LINK <br> Vagy ha fekete: ?proxy=true&url=LINK";
         }
 
-        // A RAJZOLÓ MOTOR (60 FPS)
-        function renderLoop() {
-            if (!video.paused && !video.ended) {
-                // Képarány számítása
-                const hRatio = canvas.width / video.videoWidth;
-                const vRatio = canvas.height / video.videoHeight;
-                const ratio  = Math.min(hRatio, vRatio);
-                const centerShift_x = (canvas.width - video.videoWidth*ratio) / 2;
-                const centerShift_y = (canvas.height - video.videoHeight*ratio) / 2;  
+        // 3. Kattintás kezelése (Saját Play/Pause)
+        function handleUserClick() {
+            if (!videoElement) return; // Ha még nem jött létre, ne csináljon semmit
 
-                // Rajzolás
-                ctx.fillStyle = "black";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                try {
-                    ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
-                                  centerShift_x, centerShift_y, video.videoWidth*ratio, video.videoHeight*ratio);
-                } catch (e) {
-                    // Ha itt hiba van, az a CORS miatt van (Fekete kép oka)
-                    if(video.currentTime > 0.1) {
-                         status.style.display = 'block';
-                         status.style.color = 'red';
-                         status.innerHTML = "BIZTONSÁGI HIBA (CORS)!<br>A kép nem olvasható.<br>Próbáld meg így a linket: index.html?proxy=true&url=...";
-                    }
-                }
-            }
-            requestAnimationFrame(renderLoop);
-        }
-
-        function togglePlay() {
-            if(!videoUrl) return;
-            
-            if (video.paused) {
-                video.muted = false; // Hang be
-                video.play().then(() => {
-                    document.body.classList.remove('paused');
-                    overlay.style.display = 'none';
-                    playBtnIcon.className = "fas fa-pause";
-                    renderLoop(); // Indul a rajzolás
-                }).catch(e => alert(e));
+            if (videoElement.paused) {
+                videoElement.play()
+                    .then(() => {
+                        playIcon.style.display = 'none'; // Ikon eltűnik
+                        playIcon.innerHTML = '<i class="fas fa-pause"></i>'; // Ikon csere
+                        // Kis idő múlva pause ikon is eltűnik
+                    })
+                    .catch(e => alert("Indítási hiba: " + e));
             } else {
-                video.pause();
-                document.body.classList.add('paused');
-                overlay.style.display = 'flex';
-                playBtnIcon.className = "fas fa-play";
+                videoElement.pause();
+                playIcon.innerHTML = '<i class="fas fa-play"></i>';
+                playIcon.style.display = 'block';
             }
         }
-
-        function toggleSound() {
-            video.muted = !video.muted;
-            document.getElementById('sound-btn-icon').className = video.muted ? "fas fa-volume-mute" : "fas fa-volume-up";
-        }
-
-        function toggleFullscreen() {
-            if(!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
+        
+        // Ha a videó véget ér
+        if(videoElement) {
+            videoElement.onended = () => {
+                playIcon.style.display = 'block';
+            };
         }
     </script>
 </body>
