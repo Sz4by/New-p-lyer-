@@ -2,107 +2,125 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quarantine Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fixed TV Player</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
     <style>
+        /* 1. A weboldal legyen a képernyő mérete */
         body, html {
-            margin: 0; padding: 0;
-            width: 100%; height: 100%;
-            background: black;
-            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden; /* Nincs görgetés */
         }
-        /* A Karantén Doboz (Iframe) */
-        #video-frame {
-            width: 100vw;
-            height: 100vh;
-            border: none;
-            display: block;
+
+        /* 2. A VIDEÓ BEÁLLÍTÁSA - A LEGFONTOSABB RÉSZ */
+        video {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Vagy 'cover', ha azt akarod, hogy ne legyen fekete csík */
+            z-index: 1;
+            
+            /* EZ A TITOK: */
+            pointer-events: none; /* A videó NEM kattintható! A TV nem érzi az egeret rajta. */
         }
+
+        /* 3. Vezérlő Réteg (Erre kattintasz a videó helyett) */
+        #control-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 999; /* A videó felett van */
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0,0,0,0.4); /* Sötétítés, amíg áll a videó */
+            cursor: pointer; /* Kéz ikon */
+        }
+
+        /* Play ikon stílusa */
+        #play-icon {
+            width: 80px;
+            height: 80px;
+            background: red;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.6);
+        }
+        #play-icon::after {
+            content: '';
+            position: absolute;
+            top: 50%; left: 55%;
+            transform: translate(-50%, -50%);
+            border-left: 25px solid white;
+            border-top: 15px solid transparent;
+            border-bottom: 15px solid transparent;
+        }
+
+        /* Ha megy a videó, tűnjön el a sötétítés */
+        .playing #control-layer {
+            background: transparent;
+        }
+        .playing #play-icon {
+            display: none; /* Ikon eltüntetése */
+        }
+
     </style>
 </head>
 <body>
 
-    <iframe id="video-frame" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+    <video id="my-video" playsinline webkit-playsinline></video>
+
+    <div id="control-layer" onclick="togglePlay()">
+        <div id="play-icon"></div>
+    </div>
 
     <script>
-        // 1. URL paraméter megszerzése a főoldalról
+        var video = document.getElementById('my-video');
+        var controls = document.getElementById('control-layer');
+
+        // URL paraméter betöltése
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
         if (videoUrl) {
-            // 2. A Belső Player kódja (amit beletöltünk az Iframe-be)
-            // Ez egy teljes HTML oldal kódja szövegként
-            const innerHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <style>
-                        body { margin: 0; background: black; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
-                        
-                        /* A trükk: A videó "apró", de fel van nagyítva */
-                        /* Ez néha megzavarja az érzékelőt, mert nem "teljes képernyős" videónak látja */
-                        video {
-                            width: 100%;
-                            height: 100%;
-                            object-fit: contain;
-                        }
-                        
-                        /* Indító gomb */
-                        #btn {
-                            position: absolute; z-index: 10;
-                            padding: 20px 40px; font-size: 24px;
-                            background: red; color: white; border: none; border-radius: 10px;
-                            cursor: pointer;
-                        }
-                    </style>
-                    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>
-                </head>
-                <body>
-                    <button id="btn" onclick="playVideo()">INDÍTÁS</button>
-                    
-                    <video id="v" playsinline webkit-playsinline></video>
+            // HLS vagy MP4 betöltése
+            if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
+                var hls = new Hls();
+                hls.loadSource(videoUrl);
+                hls.attachMedia(video);
+            } else {
+                video.src = videoUrl;
+            }
+        }
 
-                    <script>
-                        var video = document.getElementById('v');
-                        var btn = document.getElementById('btn');
-                        var src = "${videoUrl}"; // A linket ide illesztjük be
+        // KATTINTÁS KEZELÉSE
+        function togglePlay() {
+            if (!videoUrl) return;
 
-                        function playVideo() {
-                            btn.style.display = 'none';
-                            
-                            if (Hls.isSupported() && src.includes('.m3u8')) {
-                                var hls = new Hls();
-                                hls.loadSource(src);
-                                hls.attachMedia(video);
-                                hls.on(Hls.Events.MANIFEST_PARSED, function() {
-                                    video.play();
-                                });
-                            } else {
-                                video.src = src;
-                                video.play();
-                            }
-                        }
-                        
-                        // Kattintásra teljes képernyő kezelés
-                        video.addEventListener('click', function() {
-                             if (!document.fullscreenElement) {
-                                video.requestFullscreen().catch(e => {});
-                             }
-                        });
-                    <\/script>
-                </body>
-                </html>
-            `;
-
-            // 3. A kód beírása az Iframe-be
-            const frame = document.getElementById('video-frame');
-            const doc = frame.contentWindow.document;
-            doc.open();
-            doc.write(innerHTML);
-            doc.close();
-
-        } else {
-            document.body.innerHTML = '<h1 style="color:white;text-align:center;">Hiba: Nincs URL!</h1>';
+            if (video.paused) {
+                // Indítás
+                video.play().then(() => {
+                    // Ha elindult, levesszük a sötétítést és az ikont
+                    document.body.classList.add('playing');
+                }).catch(e => {
+                    alert("Hiba: " + e);
+                });
+            } else {
+                // Megállítás
+                video.pause();
+                document.body.classList.remove('playing');
+            }
         }
     </script>
 </body>
