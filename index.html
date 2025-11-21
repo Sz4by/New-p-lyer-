@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Web Player</title>
+    
+    <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
+
+    <style>
+        /* 1. Minden felesleg eltüntetése, csak a feketeség marad */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Görgetősáv tiltása */
+            background-color: #000;
+            font-family: sans-serif;
+        }
+
+        /* 2. A lejátszó kényszerítése a teljes ablakra */
+        .video-js {
+            width: 100vw !important;
+            height: 100vh !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* 3. A lejátszás gomb középre igazítása (TV-n jól látható legyen) */
+        .vjs-big-play-button {
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) scale(1.5) !important; /* Nagyobb gomb */
+            background-color: rgba(0, 0, 0, 0.7) !important;
+            border: 2px solid white !important;
+            border-radius: 50% !important;
+            width: 2em !important;
+            height: 2em !important;
+            line-height: 2em !important;
+        }
+
+        /* 4. Ha nincs videó megadva, ez a beviteli mező jelenik meg középen */
+        #manual-input {
+            display: none; /* Alapból rejtett */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 1000;
+            width: 80%;
+        }
+        
+        input {
+            width: 100%;
+            padding: 15px;
+            font-size: 18px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: none;
+        }
+        
+        button {
+            padding: 10px 30px;
+            font-size: 18px;
+            background-color: #e50914; /* Netflix piros :) */
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="manual-input">
+        <h2 style="color:white;">Illessz be egy videó linket</h2>
+        <input type="text" id="urlBox" placeholder="http://... .mp4 vagy .m3u8">
+        <button onclick="startFromInput()">Lejátszás</button>
+    </div>
+
+    <video
+        id="tv-player"
+        class="video-js vjs-default-skin"
+        playsinline
+        webkit-playsinline
+        controls
+        preload="auto">
+    </video>
+
+    <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+
+    <script>
+        // 1. Lejátszó inicializálása
+        var player = videojs('tv-player', {
+            autoplay: true,       // Próbáljon automatikusan indulni
+            controls: true,       // Legyenek gombok (de a Video.js sajátjai)
+            responsive: true,
+            fluid: true,
+            html5: {
+                vhs: { overrideNative: true }, // HLS felülbírálása
+                nativeAudioTracks: false,
+                nativeVideoTracks: false
+            }
+        });
+
+        // 2. URL paraméter kiolvasása (?url=...)
+        const queryString = window.location.search;
+        const urlParams = new URLSearchParams(queryString);
+        const videoUrl = urlParams.get('url'); // Vagy 'src', ahogy tetszik
+
+        if (videoUrl) {
+            // HA VAN link az URL-ben, azonnal indítjuk
+            loadAndPlay(videoUrl);
+        } else {
+            // HA NINCS link, megjelenítjük a kézi beviteli mezőt
+            document.getElementById('manual-input').style.display = 'block';
+            player.hide(); // Elrejtjük az üres lejátszót
+        }
+
+        // Segédfüggvény a betöltéshez
+        function loadAndPlay(url) {
+            // Típus felismerése
+            let type = (url.indexOf('.m3u8') > -1) ? 'application/x-mpegURL' : 'video/mp4';
+
+            // Lejátszó megjelenítése, input elrejtése
+            document.getElementById('manual-input').style.display = 'none';
+            player.show();
+
+            // Forrás beállítása
+            player.src({
+                src: url,
+                type: type
+            });
+
+            // Indítás
+            player.play().catch(function(error) {
+                // A böngészők néha tiltják az autoplay-t hanggal, ilyenkor némítva próbáljuk
+                player.muted(true);
+                player.play();
+            });
+        }
+
+        // Gombnyomásra indulás (ha kézzel írtad be)
+        function startFromInput() {
+            var url = document.getElementById('urlBox').value;
+            if(url) {
+                // Az oldal újratöltése az URL paraméterrel (így elmenthető könyvjelzőnek)
+                // Vagy betölthetjük közvetlenül is:
+                loadAndPlay(url);
+            }
+        }
+    </script>
+</body>
+</html>
