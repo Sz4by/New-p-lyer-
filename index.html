@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remote Control Player</title>
+    <title>Full Remote Player</title>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
@@ -11,10 +11,8 @@
             margin: 0; padding: 0; width: 100%; height: 100%;
             background: black; overflow: hidden;
         }
-        /* A konténer */
         #safe-zone {
-            width: 100vw; height: 100vh;
-            display: block;
+            width: 100vw; height: 100vh; display: block;
         }
     </style>
 </head>
@@ -26,7 +24,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        // 1. SHADOW DOM LÉTREHOZÁSA (A rejtekhely)
+        // 1. REJTEKHELY (Shadow DOM)
         const host = document.getElementById('safe-zone');
         const shadow = host.attachShadow({ mode: 'closed' });
 
@@ -37,47 +35,47 @@
             
             :host { display: block; width: 100%; height: 100%; position: relative; font-family: sans-serif; }
             
-            video {
-                width: 100%; height: 100%;
-                object-fit: contain; background: black;
-            }
+            video { width: 100%; height: 100%; object-fit: contain; background: black; }
             video::-webkit-media-controls { display: none !important; }
 
-            /* Nagy Play ikon (Indításkor/Szünetnél) */
-            .big-icon {
+            /* Középső Nagy Ikon (Visszajelzés) */
+            .center-feedback {
                 position: absolute; top: 50%; left: 50%;
                 transform: translate(-50%, -50%);
-                font-size: 100px; color: rgba(255,255,255,0.8);
+                font-size: 80px; color: rgba(255,255,255,0.9);
                 text-shadow: 0 0 20px black;
+                background: rgba(0,0,0,0.5);
+                padding: 20px 40px; border-radius: 20px;
                 pointer-events: none; z-index: 20;
-                display: none; /* Alapból rejtve */
+                display: none; flex-direction: column; align-items: center;
             }
+            .center-text { font-size: 30px; margin-top: 10px; }
 
             /* Vezérlősáv */
             .controls {
                 position: absolute; bottom: 0; left: 0;
                 width: 100%; height: 80px;
-                background: rgba(0,0,0,0.9);
+                background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
                 display: flex; align-items: center;
                 padding: 0 30px; box-sizing: border-box;
                 z-index: 30; transition: opacity 0.3s;
             }
             
-            button {
-                background: none; border: none; color: white;
-                font-size: 24px; width: 50px; text-align: center;
-            }
+            button { background: none; border: none; color: white; font-size: 24px; width: 40px; cursor: pointer; }
             
-            .time { color: white; font-size: 18px; margin: 0 20px; min-width: 110px; text-align: center; }
+            .time { color: white; font-size: 16px; margin: 0 15px; min-width: 100px; text-align: center; }
 
-            /* Csúszka */
-            .seek-container { flex-grow: 1; margin: 0 20px; display: flex; align-items: center; }
+            /* Csúszkák (Seek és Volume) */
+            .slider-container { position: relative; display: flex; align-items: center; }
+            .seek-box { flex-grow: 1; margin: 0 20px; }
+            .vol-box { width: 100px; margin-left: 10px; display: flex; align-items: center; }
+
             input[type=range] {
-                -webkit-appearance: none; width: 100%; height: 8px;
+                -webkit-appearance: none; width: 100%; height: 6px;
                 background: #555; border-radius: 5px; outline: none;
             }
             input[type=range]::-webkit-slider-thumb {
-                -webkit-appearance: none; width: 20px; height: 20px;
+                -webkit-appearance: none; width: 16px; height: 16px;
                 background: red; border-radius: 50%; border: 2px solid white;
             }
 
@@ -90,25 +88,39 @@
         container.style.width = '100%'; container.style.height = '100%'; container.style.position = 'relative';
 
         container.innerHTML = `
-            <div id="center-icon" class="big-icon"><i class="fas fa-play"></i></div>
+            <div id="feedback" class="center-feedback">
+                <i id="fb-icon" class="fas fa-play"></i>
+                <span id="fb-text" class="center-text"></span>
+            </div>
             
             <video id="v" playsinline webkit-playsinline></video>
 
             <div id="controls" class="controls">
                 <button id="btn-play"><i class="fas fa-play"></i></button>
+                
+                <div class="vol-box">
+                    <button id="btn-mute"><i class="fas fa-volume-up"></i></button>
+                    <input type="range" id="vol-slider" min="0" max="1" step="0.1" value="1">
+                </div>
+
                 <div class="time"><span id="cur">0:00</span> / <span id="dur">0:00</span></div>
-                <div class="seek-container">
+                
+                <div class="slider-container seek-box">
                     <input type="range" id="seek" min="0" value="0" step="1">
                 </div>
             </div>
         `;
         shadow.appendChild(container);
 
-        // 4. LOGIKA
+        // 4. JAVASCRIPT LOGIKA
         const vid = container.querySelector('#v');
-        const centerIcon = container.querySelector('#center-icon');
+        const feedback = container.querySelector('#feedback');
+        const fbIcon = container.querySelector('#fb-icon');
+        const fbText = container.querySelector('#fb-text');
         const btnPlay = container.querySelector('#btn-play');
+        const btnMute = container.querySelector('#btn-mute');
         const seek = container.querySelector('#seek');
+        const volSlider = container.querySelector('#vol-slider');
         const curText = container.querySelector('#cur');
         const durText = container.querySelector('#dur');
         const controlsDiv = container.querySelector('#controls');
@@ -123,87 +135,117 @@
                 vid.src = videoUrl;
             }
         } else {
-            centerIcon.innerHTML = "Nincs URL";
-            centerIcon.style.display = 'block';
+            showFeedback('fa-exclamation-triangle', 'Nincs URL');
         }
 
-        // --- VEZÉRLÉS FUNKCIÓK ---
+        // --- VIZUÁLIS VISSZAJELZÉS ---
+        let fbTimer;
+        function showFeedback(iconClass, text = '') {
+            fbIcon.className = `fas ${iconClass}`;
+            fbText.innerText = text;
+            feedback.style.display = 'flex';
+            
+            clearTimeout(fbTimer);
+            fbTimer = setTimeout(() => {
+                feedback.style.display = 'none';
+            }, 1000); // 1 másodperc után eltűnik
+        }
 
+        // --- PLAY / PAUSE ---
         function togglePlay() {
             if (vid.paused) {
                 vid.play();
-                centerIcon.style.display = 'none';
+                showFeedback('fa-play', '');
                 btnPlay.innerHTML = '<i class="fas fa-pause"></i>';
-                resetTimer(); // Sáv megjelenítése
+                resetTimer();
             } else {
                 vid.pause();
-                centerIcon.innerHTML = '<i class="fas fa-play"></i>'; // Play ikon
-                centerIcon.style.display = 'block';
+                showFeedback('fa-pause', '');
                 btnPlay.innerHTML = '<i class="fas fa-play"></i>';
-                controlsDiv.classList.remove('hidden'); // Sáv maradjon kint
+                controlsDiv.classList.remove('hidden');
             }
         }
 
+        // --- TEKERÉS (SEEK) ---
         function seekVideo(seconds) {
             vid.currentTime = Math.max(0, Math.min(vid.duration, vid.currentTime + seconds));
-            
-            // Vizuális visszajelzés (ikon középen)
-            centerIcon.style.display = 'block';
-            if (seconds > 0) centerIcon.innerHTML = '<i class="fas fa-forward"></i> +10s';
-            else centerIcon.innerHTML = '<i class="fas fa-backward"></i> -10s';
-            
-            // Kis idő múlva eltüntetjük az ikont
-            setTimeout(() => {
-                if (!vid.paused) centerIcon.style.display = 'none';
-            }, 800);
-            
             resetTimer();
+            
+            const icon = seconds > 0 ? 'fa-forward' : 'fa-backward';
+            const text = (seconds > 0 ? '+' : '') + seconds + 's';
+            showFeedback(icon, text);
         }
 
-        // --- TÁVIRÁNYÍTÓ GOMBOK KEZELÉSE ---
-        // Ez a rész figyeli a Fire TV távirányítót
+        // --- HANGERŐ (VOLUME) ---
+        function changeVolume(change) {
+            // change értéke pl. +0.1 vagy -0.1
+            let newVol = vid.volume + change;
+            if (newVol > 1) newVol = 1;
+            if (newVol < 0) newVol = 0;
+            
+            vid.volume = newVol;
+            volSlider.value = newVol;
+            
+            // Ikon frissítése
+            updateVolIcon();
+            resetTimer();
+
+            // Visszajelzés középen
+            const percent = Math.round(newVol * 100) + '%';
+            const icon = newVol === 0 ? 'fa-volume-mute' : (newVol < 0.5 ? 'fa-volume-down' : 'fa-volume-up');
+            showFeedback(icon, percent);
+        }
+
+        function updateVolIcon() {
+            if(vid.volume === 0) btnMute.innerHTML = '<i class="fas fa-volume-mute"></i>';
+            else if(vid.volume < 0.5) btnMute.innerHTML = '<i class="fas fa-volume-down"></i>';
+            else btnMute.innerHTML = '<i class="fas fa-volume-up"></i>';
+        }
+
+        // --- TÁVIRÁNYÍTÓ GOMBOK ---
         document.addEventListener('keydown', (e) => {
             const key = e.key;
             const code = e.keyCode;
 
-            // Debugoláshoz (ha kellene): console.log("Gomb:", key, code);
-
-            // 1. KÖZÉPSŐ GOMB (OK / ENTER) vagy PLAY/PAUSE GOMB
-            if (key === 'Enter' || code === 13 || code === 179 || key === 'MediaPlayPause') {
-                togglePlay();
-                e.preventDefault(); // Ne kattintson sehova máshova
+            // 1. OK / ENTER / SPACE -> Play/Pause
+            if (key === 'Enter' || code === 13 || code === 32) {
+                togglePlay(); e.preventDefault();
             }
 
-            // 2. JOBBRA NYÍL vagy FAST FORWARD (Tekerés előre 10mp)
-            if (key === 'ArrowRight' || code === 39 || code === 228 || key === 'MediaFastForward') {
-                seekVideo(10);
-                e.preventDefault();
+            // 2. JOBBRA / BALRA -> Tekerés
+            if (key === 'ArrowRight' || code === 39) {
+                seekVideo(10); e.preventDefault();
+            }
+            if (key === 'ArrowLeft' || code === 37) {
+                seekVideo(-10); e.preventDefault();
             }
 
-            // 3. BALRA NYÍL vagy REWIND (Tekerés hátra 10mp)
-            if (key === 'ArrowLeft' || code === 37 || code === 227 || key === 'MediaRewind') {
-                seekVideo(-10);
-                e.preventDefault();
+            // 3. FEL / LE -> HANGERŐ !!!
+            if (key === 'ArrowUp' || code === 38) {
+                changeVolume(0.1); e.preventDefault();
             }
-            
-            // 4. SPACE (Billentyűzethez)
-            if (code === 32) {
-                togglePlay();
-                e.preventDefault();
+            if (key === 'ArrowDown' || code === 40) {
+                changeVolume(-0.1); e.preventDefault();
             }
         });
 
-        // Egér/Touch események
+        // --- ESEMÉNYKEZELŐK ---
         btnPlay.addEventListener('click', togglePlay);
-        centerIcon.addEventListener('click', togglePlay);
+        vid.addEventListener('click', togglePlay);
         
-        // Idő frissítése
+        // Csúszkák kézi mozgatása
+        seek.addEventListener('input', () => vid.currentTime = seek.value);
+        volSlider.addEventListener('input', () => {
+            vid.volume = volSlider.value;
+            updateVolIcon();
+        });
+
+        // Idő frissítés
         function formatTime(s) {
             const m = Math.floor(s / 60);
             const sec = Math.floor(s % 60);
             return `${m}:${sec < 10 ? '0' : ''}${sec}`;
         }
-
         vid.addEventListener('timeupdate', () => {
             if (!isNaN(vid.duration)) {
                 seek.max = vid.duration;
@@ -213,12 +255,7 @@
             curText.innerText = formatTime(vid.currentTime);
         });
 
-        seek.addEventListener('input', () => {
-            vid.currentTime = seek.value;
-            resetTimer();
-        });
-
-        // Inaktivitás kezelése (Sáv elrejtése)
+        // Sáv elrejtése
         let timer;
         function resetTimer() {
             controlsDiv.classList.remove('hidden');
