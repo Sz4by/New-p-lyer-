@@ -2,112 +2,135 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Safe Player</title>
-    
-    <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            overflow: hidden;
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background: #000; overflow: hidden;
         }
 
-        /* A LEJÁTSZÓ KONTÉNER */
-        .video-js {
-            width: 100vw !important;
-            height: 100vh !important;
+        /* 1. A Videót elrejtjük a TV szeme elől (mögé tesszük) */
+        #source-video {
+            position: absolute; top: 0; left: 0;
+            width: 1px; height: 1px; /* Ha 0 lenne, megállna */
+            opacity: 0.01; /* Majdnem láthatatlan */
+            z-index: -1; /* A vászon mögött van */
         }
 
-        /* --- A FŐ TRÜKK: ÉRINTÉS TILTÁSA A VIDEÓN --- */
-        /* Ez azt mondja a böngészőnek: "Ez a videó nem kattintható". 
-           Így a natív TV gombok nem fognak reagálni, vagy meg sem jelennek kattintásra. */
-        .video-js video {
-            pointer-events: none !important; 
+        /* 2. A Vászon: Ezt látod te (ez csak "festék", nem videó elem) */
+        #screen-canvas {
+            width: 100vw; height: 100vh;
+            display: block;
+            object-fit: contain;
         }
 
-        /* --- A LÁTHATATLAN PAJZS --- */
-        /* Ez egy réteg, ami lefedi a videót. Erre kattintasz a videó helyett. */
-        #click-shield {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%; /* -50px, hogy az alsó sávhoz hozzáférj, ha kell */
-            z-index: 50; /* A videó felett van */
-            background: transparent; /* Láthatatlan */
-            cursor: pointer;
+        /* 3. Indító gomb (hogy legyen hang) */
+        #overlay {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 100; cursor: pointer;
         }
-
-        /* A Video.js vezérlősávja legyen a pajzs felett, hogy azt tudd nyomkodni */
-        .vjs-control-bar {
-            z-index: 100 !important; 
+        #play-btn {
+            font-size: 30px; color: white;
+            border: 2px solid white; padding: 15px 30px;
+            background: red; border-radius: 10px;
         }
-        
-        /* A nagy lejátszás gomb is legyen kattintható */
-        .vjs-big-play-button {
-            z-index: 101 !important;
-            pointer-events: auto !important;
-        }
-
     </style>
 </head>
 <body>
 
-    <div id="click-shield"></div>
+    <div id="overlay" onclick="startPlayer()">
+        <div id="play-btn">LEJÁTSZÁS INDÍTÁSA</div>
+    </div>
 
-    <video id="tv-player" class="video-js vjs-default-skin" playsinline webkit-playsinline></video>
+    <canvas id="screen-canvas"></canvas>
 
-    <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+    <video id="source-video" 
+           playsinline 
+           webkit-playsinline 
+           muted 
+           disablePictureInPicture
+           controlsList="nodownload nofullscreen noremoteplayback">
+    </video>
 
     <script>
-        // URL paraméter kezelése
+        const video = document.getElementById('source-video');
+        const canvas = document.getElementById('screen-canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Gyorsabb renderelés
+        const overlay = document.getElementById('overlay');
+
+        // URL paraméter kiolvasása
         const urlParams = new URLSearchParams(window.location.search);
         const videoUrl = urlParams.get('url');
 
-        var player = videojs('tv-player', {
-            controls: true,
-            autoplay: true,
-            preload: 'auto',
-            fluid: true,
-            html5: {
-                vhs: { overrideNative: true },
-                nativeAudioTracks: false,
-                nativeVideoTracks: false
-            }
-        });
+        // Vászon méretezése teljes képernyőre
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
+        // --- 1. A Videó betöltése ---
         if (videoUrl) {
-            let type = (videoUrl.indexOf('.m3u8') > -1) ? 'application/x-mpegURL' : 'video/mp4';
-            player.src({ src: videoUrl, type: type });
+            if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
+                const hls = new Hls();
+                hls.loadSource(videoUrl);
+                hls.attachMedia(video);
+            } else {
+                video.src = videoUrl;
+            }
+        } else {
+            document.getElementById('play-btn').innerText = "HIBA: Nincs URL paraméter!";
         }
 
-        // --- PAJZS LOGIKA ---
-        // Amikor a képernyő közepére (a pajzsra) kattintasz:
-        document.getElementById('click-shield').addEventListener('click', function() {
-            if (player.paused()) {
-                player.play();
-            } else {
-                player.pause();
-            }
-            
-            // Opcionális: Ha kattintasz, mutassa meg a vezérlőket egy kis időre
-            player.userActive(true);
-        });
-        
-        // Dupla kattintásra teljes képernyő (Video.js féle, nem a TV féle)
-        document.getElementById('click-shield').addEventListener('dblclick', function() {
-            if (player.isFullscreen()) {
-                player.exitFullscreen();
-            } else {
-                player.requestFullscreen();
-            }
-        });
+        // --- 2. A "Mozi Gépész": Másolja a videót a vászonra (60FPS) ---
+        function renderFrame() {
+            if (!video.paused && !video.ended) {
+                // Kiszámoljuk, hogyan fér el a képen (mint a background-size: contain)
+                const hRatio = canvas.width / video.videoWidth;
+                const vRatio = canvas.height / video.videoHeight;
+                const ratio  = Math.min(hRatio, vRatio);
+                
+                const centerShift_x = (canvas.width - video.videoWidth*ratio) / 2;
+                const centerShift_y = (canvas.height - video.videoHeight*ratio) / 2;  
 
+                // Törlés és újrarajzolás
+                ctx.fillStyle = "black";
+                ctx.fillRect(0,0,canvas.width, canvas.height);
+                ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight,
+                                     centerShift_x, centerShift_y, video.videoWidth*ratio, video.videoHeight*ratio);
+            }
+            requestAnimationFrame(renderFrame);
+        }
+
+        // --- 3. Indítás ---
+        function startPlayer() {
+            if(!videoUrl) return;
+            
+            video.muted = false; // Hang bekapcsolása
+            video.play().then(() => {
+                overlay.style.display = 'none'; // Gomb eltüntetése
+                renderFrame(); // Rajzolás indítása
+            }).catch(err => {
+                alert("Hiba az indításnál: " + err);
+            });
+        }
+
+        // Ha kattintasz a film közben, megáll/elindul
+        canvas.addEventListener('click', () => {
+            if(video.paused) {
+                video.play();
+                renderFrame();
+            } else {
+                video.pause();
+            }
+        });
     </script>
 </body>
 </html>
